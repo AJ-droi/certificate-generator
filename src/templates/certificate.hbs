@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      .page-break {
+        page-break-after: always;
+      }
+
+      tr,
+      td,
+      th {
+        page-break-inside: avoid;
+      }
+    </style>
+  </head>
+
+  <body class="m-0 p-0 text-[9px] leading-tight bg-white">
+    {{#each pages}}
+    <div class="bg-white w-[210mm] h-[297mm] mx-auto {{#unless @last}}page-break{{/unless}}">
+      <div class="border border-black h-full p-2 flex flex-col">
+        <div class="flex items-center justify-between">
+          <img src="{{@root.logo}}" class="w-16" alt="Company Logo" />
+
+          <div class="text-center w-full">
+            <h1 class="font-bold text-[16px]">Report Of Thorough Examination</h1>
+            <p class="text-[10px] font-bold mt-0.5">
+              This report meets the requirements of schedule 1 of regulation 10 of LOLER 1998
+            </p>
+          </div>
+
+          <div class="flex justify-between">
+            <div class="w-16 h-16 border border-black flex items-center justify-center text-[8px]">
+              {{#if @root.qr}}
+              <img src="{{@root.qr}}" class="w-full h-full object-contain" alt="QR code" />
+              {{else}}
+              QR
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-1 p-1 mt-1">
+          <div>Certificate No: {{@root.certificateNo}}</div>
+          <div>Date of Examination: {{@root.examDate}}</div>
+          <div>Date of Report: {{@root.reportDate}}</div>
+          <div>Colour Code (if required): {{@root.colorCode}}</div>
+        </div>
+
+        <div class="flex gap-1 mt-1 border border-black">
+          <div class="border-black border-r-[1px] pl-1 pr-1 pb-2">
+            Name &amp; Address of the employer for whom the examination was made:
+            <br /><span class="font-medium">{{@root.employerName}}</span>
+          </div>
+          <div class="border-black border-r-[1px] pl-1 pr-1 pb-2">
+            Address of the premises at which the examination was made:
+            <br /><span class="font-medium">{{@root.premisesAddress}}</span>
+          </div>
+          <div>
+            <p>Status:</p>
+            <p class="font-medium">ND - No Defect:</p>
+            <p class="font-medium">SDR - See Defect Report</p>
+            <p class="font-medium">NF - Not Found</p>
+            <p class="font-medium">OBS - Observation (see Defect Report)</p>
+          </div>
+        </div>
+
+        <table class="w-full border border-black mt-2 text-[8px] leading-tight">
+          <thead>
+            <tr>
+              <th class="border border-black p-[2px]">S/N</th>
+              <th class="border border-black p-[2px]">Identification Number</th>
+              <th class="border border-black p-[2px] w-[35%]">Description</th>
+              <th class="border border-black p-[2px]">WLL or SWL</th>
+              <th class="border border-black p-[2px]">Date of Last Thorough Examination</th>
+              <th class="border border-black p-[2px]">Date of Manufacture (if known)</th>
+              <th class="border border-black p-[2px]">Latest date of next through examination</th>
+              <th class="border border-black p-[2px]">Reason for Examination (See Below)</th>
+              <th class="border border-black p-[2px]">Details of any test</th>
+              <th class="border border-black p-[2px]">Status (See above)</th>
+              <th class="border border-black p-[2px]">Safe to Use Yes / No</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each this}}
+            <tr>
+              <td class="border border-black p-[2px]">{{sn}}</td>
+              <td class="border border-black p-[2px]">{{identificationNumber}}</td>
+              <td class="border border-black p-[2px]">{{description}}</td>
+              <td class="border border-black p-[2px]">{{wllOrSwl}}</td>
+              <td class="border border-black p-[2px]">{{lastThoroughExamDate}}</td>
+              <td class="border border-black p-[2px]">{{manufactureDate}}</td>
+              <td class="border border-black p-[2px]">{{nextThoroughExamDate}}</td>
+              <td class="border border-black p-[2px]">{{examinationReason}}</td>
+              <td class="border border-black p-[2px]">{{testDetails}}</td>
+              <td class="border border-black p-[2px]">{{status}}</td>
+              <td class="border border-black p-[2px]">{{safeToUse}}</td>
+            </tr>
+            {{/each}}
+          </tbody>
+        </table>
+
+        <div class="flex mt-2 border border-black text-[8px]">
+          <div class="px-1 py-[2px] border-r border-black font-semibold">Reason for Examination</div>
+
+          <div class="pl-1 pr-6 py-[2px] border-r border-black">
+            Installation: <strong>A</strong> {{#if @root.reasons.installation}}✓{{/if}}
+          </div>
+
+          <div class="pl-1 pr-6 py-[2px] border-r border-black">
+            6 Monthly: <strong>B</strong> {{#if @root.reasons.sixMonthly}}✓{{/if}}
+          </div>
+
+          <div class="pl-1 pr-6 py-[2px] border-r border-black">
+            12 Monthly: <strong>C</strong> {{#if @root.reasons.twelveMonthly}}✓{{/if}}
+          </div>
+
+          <div class="pl-1 pr-6 py-[2px] border-r border-black">
+            Written Scheme: <strong>D</strong> {{#if @root.reasons.writtenScheme}}✓{{/if}}
+          </div>
+
+          <div class="pl-1 pr-6 py-[2px]">
+            Exceptional Circumstance: <strong>E</strong> {{#if @root.reasons.exceptional}}✓{{/if}}
+          </div>
+        </div>
+
+        <div class="w-full flex justify-evenly items-center mb-2 mt-2">
+          <table class="border border-black border-collapse text-[8px]">
+            <tr>
+              <td class="border border-black px-2 py-[2px]">Defect / Observation sheet attached?</td>
+              <td class="border border-black px-2 py-[2px] text-center">Yes</td>
+              <td class="border border-black px-2 py-[2px] text-center font-bold">{{#if @root.defectSheetAttached}}✓{{/if}}</td>
+              <td class="border border-black px-2 py-[2px] text-center">No</td>
+              <td class="border border-black px-2 py-[2px] text-center font-bold">{{#unless @root.defectSheetAttached}}✓{{/unless}}</td>
+            </tr>
+          </table>
+
+          <table class="border border-black border-collapse text-[8px]">
+            <tr>
+              <td class="border border-black px-3 py-[2px] font-medium">Relevant standard</td>
+              <td class="border border-black px-4 py-[2px]">{{@root.relevantStandard}}</td>
+            </tr>
+          </table>
+        </div>
+
+        <table class="w-[80%] mx-auto text-center">
+          <tr class="font-semibold text-[11px]">
+            <td class="border border-black py-1">Inspector's Name/Qualification</td>
+            <td class="border border-black py-1">Checked by Name/Qualification</td>
+          </tr>
+
+          <tr>
+            <td colspan="2" class="h-1"></td>
+          </tr>
+
+          <tr>
+            <td class="border border-black py-2">
+              <div class="font-bold text-[10px] mb-1">{{@root.inspector.name}}</div>
+
+              <img src="{{@root.inspector.signature}}" class="mx-auto h-10 object-contain" alt="Inspector signature" />
+              <p>{{@root.inspector.qualification}}</p>
+            </td>
+
+            <td class="border border-black py-2">
+              <div class="font-bold text-[10px] mb-1">{{@root.checkedBy.name}}</div>
+
+              <img src="{{@root.checkedBy.signature}}" class="mx-auto h-12 object-contain" alt="Checker signature" />
+
+              <div class="text-[10px] font-semibold mt-1">{{@root.checkedBy.date}}</div>
+              <p>{{@root.checkedBy.qualification}}</p>
+            </td>
+          </tr>
+        </table>
+
+        <div class="flex justify-between items-center mt-auto pt-2 px-2">
+          {{#if @root.footerLogos.iso}}
+          <img src="{{@root.footerLogos.iso}}" class="h-8 object-contain" alt="ISO" />
+          {{/if}}
+
+          {{#if @root.footerLogos.iadc}}
+          <img src="{{@root.footerLogos.iadc}}" class="h-8 object-contain" alt="IADC" />
+          {{/if}}
+
+          {{#if @root.footerLogos.dpr}}
+          <img src="{{@root.footerLogos.dpr}}" class="h-8 object-contain" alt="DPR" />
+          {{/if}}
+
+          {{#if @root.footerLogos.labour}}
+          <img src="{{@root.footerLogos.labour}}" class="h-8 object-contain" alt="Labour" />
+          {{/if}}
+        </div>
+      </div>
+    </div>
+    {{/each}}
+  </body>
+</html>

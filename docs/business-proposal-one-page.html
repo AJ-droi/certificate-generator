@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Proposal - Certificate Generator</title>
+    <style>
+      :root {
+        --ink: #1c2733;
+        --muted: #526173;
+        --brand: #005f73;
+        --accent: #ee9b00;
+        --line: #d7dee6;
+        --paper: #ffffff;
+        --bg: linear-gradient(145deg, #edf2f7 0%, #f8fafc 60%, #e6ecf4 100%);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        padding: 24px;
+      }
+
+      .sheet {
+        max-width: 900px;
+        margin: 0 auto;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 12px 30px rgba(26, 42, 58, 0.08);
+      }
+
+      .hero {
+        padding: 28px 34px 22px;
+        background: linear-gradient(120deg, var(--brand), #0a9396);
+        color: #fff;
+      }
+
+      .hero h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        letter-spacing: 0.2px;
+      }
+
+      .hero p {
+        margin: 0;
+        font-size: 14px;
+        opacity: 0.95;
+      }
+
+      .meta {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        padding: 14px 34px;
+        border-bottom: 1px solid var(--line);
+        background: #f9fbfd;
+        font-size: 12px;
+      }
+
+      .meta div {
+        color: var(--muted);
+      }
+
+      .meta strong {
+        display: block;
+        color: var(--ink);
+        margin-bottom: 2px;
+      }
+
+      .content {
+        padding: 22px 34px 30px;
+      }
+
+      h2 {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+        margin: 0 0 8px;
+        color: var(--brand);
+      }
+
+      p,
+      li {
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--ink);
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 22px;
+        margin-top: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+        background: #fff;
+      }
+
+      ul {
+        margin: 6px 0 0;
+        padding-left: 17px;
+      }
+
+      .commercial {
+        border-left: 4px solid var(--accent);
+        padding-left: 12px;
+        margin-top: 10px;
+      }
+
+      .price {
+        font-size: 24px;
+        font-weight: 700;
+        color: #9b5d00;
+        margin: 3px 0 8px;
+      }
+
+      .sign {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      .line {
+        margin-top: 22px;
+        border-top: 1px solid #8fa1b4;
+        padding-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .footer {
+        margin-top: 16px;
+        padding-top: 10px;
+        border-top: 1px dashed var(--line);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      @media print {
+        body {
+          background: #fff;
+          padding: 0;
+        }
+
+        .sheet {
+          border: none;
+          border-radius: 0;
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <article class="sheet">
+      <section class="hero">
+        <h1>Business Proposal</h1>
+        <p>Execution Plan for Certificate Generator Project</p>
+      </section>
+
+      <section class="meta">
+        <div><strong>Prepared By</strong>[Your Company Name]</div>
+        <div><strong>Prepared For</strong>[Client Company Name]</div>
+        <div><strong>Date</strong>March 6, 2026</div>
+        <div><strong>Validity</strong>30 Days</div>
+      </section>
+
+      <section class="content">
+        <h2>Project Summary</h2>
+        <p>
+          This proposal covers full execution of a web-based certificate management and PDF generation platform
+          using the existing Node.js architecture (Express, PostgreSQL, TypeORM, Handlebars, Puppeteer, QR code).
+          The objective is to deliver a production-ready workflow from certificate input to signed PDF output.
+        </p>
+
+        <div class="row">
+          <div class="card">
+            <h2>Scope and Deliverables</h2>
+            <ul>
+              <li>Backend API hardening for certificate data operations.</li>
+              <li>Admin portal completion for create/update/retrieval workflows.</li>
+              <li>Branded, multi-page certificate template finalization.</li>
+              <li>Automated PDF generation and file output management.</li>
+              <li>QR code generation with certificate route verification.</li>
+              <li>Database configuration, deployment runbook, and handover docs.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h2>Timeline</h2>
+            <ul>
+              <li><strong>Week 1:</strong> Discovery and requirements lock.</li>
+              <li><strong>Week 2-3:</strong> Backend and admin flow implementation.</li>
+              <li><strong>Week 4:</strong> PDF/QR integration and template QA.</li>
+              <li><strong>Week 5:</strong> UAT, production deployment, and handover.</li>
+            </ul>
+
+            <div class="commercial">
+              <h2>Commercials</h2>
+              <div class="price">$15,000</div>
+              <p>Fixed scope fee</p>
+              <ul>
+                <li>30% kickoff</li>
+                <li>40% UAT-ready delivery</li>
+                <li>30% go-live sign-off</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="card">
+            <h2>Assumptions</h2>
+            <ul>
+              <li>Client provides final branding assets and signatory details.</li>
+              <li>Hosting environment access is provided by client.</li>
+              <li>Out-of-scope changes are handled via change requests.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h2>Success Criteria</h2>
+            <ul>
+              <li>Certificate CRUD operations complete in admin portal.</li>
+              <li>Preview and PDF outputs match approved format.</li>
+              <li>QR links resolve correctly to certificate routes.</li>
+              <li>Deployment and documentation accepted by stakeholders.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sign">
+          <div>
+            <h2>Client Acceptance</h2>
+            <div class="line">Name / Signature / Date</div>
+          </div>
+          <div>
+            <h2>Prepared By</h2>
+            <div class="line">[Your Name], [Title]</div>
+          </div>
+        </div>
+
+        <div class="footer">
+          Contact: [your.email@company.com] | [Phone Number]
+        </div>
+      </section>
+    </article>
+  </body>
+</html>
