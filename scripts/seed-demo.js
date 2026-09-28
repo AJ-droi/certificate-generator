@@ -7,7 +7,7 @@ const fs = require("fs")
 const path = require("path")
 const { AppDataSource, initializeDatabase, repo } = require("../src/config/database")
 const { createOrganizationWithAdmin } = require("../src/services/org.service")
-const { createTemplate } = require("../src/services/template.service")
+const { createTemplate, uploadSource } = require("../src/services/template.service")
 const documents = require("../src/services/document.service")
 const { hashPassword, publicUser } = require("../src/lib/auth")
 const { closeBrowser } = require("../src/services/pdf.service")
@@ -81,6 +81,26 @@ async function main() {
   console.log("\nDemo company created. Sign in at /app with any of these (password: %s):", PASSWORD)
   for (const u of [admin, issuer, approver]) console.log(`  ${publicUser(u).role.padEnd(8)} ${u.email}`)
   if (issued) console.log(`\nSample certificate ${issued.documentNo}: /v/${issued.publicId}`)
+
+  // A second template made from an uploaded PDF form, with boxes placed on it.
+  const PT = path.join(__dirname, "..", "seeds", "pressure-test")
+  const pt = JSON.parse(fs.readFileSync(path.join(PT, "template.json"), "utf8"))
+  const { sourceHash } = await uploadSource(admin, fs.readFileSync(path.join(PT, "form.pdf")))
+  const { template: ptTemplate } = await createTemplate(admin, { ...pt, kind: "pdf", sourceHash })
+  const ptData = { ...pt.settings.sampleData }
+  // 15 items: more than fit on the page, so the page repeats for the rest.
+  ptData.items = Array.from({ length: 15 }, (_, i) => ({
+    ...pt.settings.sampleData.items[i % pt.settings.sampleData.items.length],
+    tag: `FL-${101 + i}`,
+  }))
+  const ptDraft = await documents.createDocument(fakeReq(issuer), { templateId: ptTemplate.id, data: ptData })
+  await documents.submitForApproval(fakeReq(issuer), ptDraft.id)
+  try {
+    const ptIssued = await documents.approveAndIssue(fakeReq(approver), ptDraft.id)
+    console.log(`Sample pressure test certificate (from a PDF form) ${ptIssued.documentNo}: /v/${ptIssued.publicId}`)
+  } catch (err) {
+    console.warn(`Couldn't issue the PDF sample: ${err.message}`)
+  }
 }
 
 main()

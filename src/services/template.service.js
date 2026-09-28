@@ -1,6 +1,8 @@
 const { AppDataSource, repo } = require("../config/database")
 const { validateSchema, normalizeData } = require("../lib/schema")
 const { checkTemplateSyntax } = require("../lib/render")
+const { inspectSourcePdf, validateLayout } = require("../lib/pdf-overlay")
+const storage = require("./storage.service")
 const { canonicalJson, sha256 } = require("../lib/crypto")
 const { badRequest, notFound } = require("../lib/errors")
 
@@ -24,10 +26,7 @@ function cleanSettings(settings = {}, schema) {
   return { numberPrefix, numberPadding, sampleData }
 }
 
-function prepareVersion({ html, schema, settings }) {
-  if (typeof html !== "string" || !html.trim()) throw badRequest("Template HTML is required")
-  if (html.length > MAX_HTML) throw badRequest("Template HTML is too large (max 1 MB)")
-  checkTemplateSyntax(html)
+function parseSchema(schema) {
   let parsed = schema
   if (typeof schema === "string") {
     try {
@@ -36,21 +35,59 @@ function prepareVersion({ html, schema, settings }) {
       throw badRequest(`Field schema is not valid JSON: ${err.message}`)
     }
   }
-  const cleanSchema = validateSchema(parsed)
+  return validateSchema(parsed)
+}
+
+// Validates a template version. `kind` is "html" (default) or "pdf".
+async function prepareVersion({ kind = "html", html, schema, settings, sourceHash, layout }, organizationId) {
+  const cleanSchema = parseSchema(schema)
   const cleanSet = cleanSettings(settings, cleanSchema)
   const { sampleData, ...hashedSettings } = cleanSet
+
+  if (kind === "pdf") {
+    if (!/^[a-f0-9]{64}$/.test(String(sourceHash || ""))) throw badRequest("Upload the PDF first")
+    if (!(await storage.hasTemplateSource(organizationId, sourceHash))) throw badRequest("The uploaded PDF wasn't found. Upload it again.")
+    const source = await storage.readTemplateSource(organizationId, sourceHash)
+    if (sha256(source) !== sourceHash) throw badRequest("The stored PDF doesn't match its fingerprint. Upload it again.")
+    const info = await inspectSourcePdf(source)
+    const cleanLayout = { pages: info.pages, ...validateLayout(layout, cleanSchema, info.pages) }
+    return {
+      kind: "pdf",
+      html: "",
+      sourceHash,
+      layout: cleanLayout,
+      schema: cleanSchema,
+      settings: cleanSet,
+      contentHash: sha256(canonicalJson({ kind: "pdf", sourceHash, layout: cleanLayout, schema: cleanSchema, settings: hashedSettings })),
+    }
+  }
+
+  if (typeof html !== "string" || !html.trim()) throw badRequest("Template HTML is required")
+  if (html.length > MAX_HTML) throw badRequest("Template HTML is too large (max 1 MB)")
+  checkTemplateSyntax(html)
   return {
+    kind: "html",
     html,
+    sourceHash: null,
+    layout: null,
     schema: cleanSchema,
     settings: cleanSet,
     contentHash: sha256(canonicalJson({ html, schema: cleanSchema, settings: hashedSettings })),
   }
 }
 
-async function createTemplate(user, { name, description, html, schema, settings }) {
+// Stores an uploaded PDF (by fingerprint) and reports its pages and fillable fields.
+async function uploadSource(user, buffer) {
+  const info = await inspectSourcePdf(buffer)
+  const hash = sha256(buffer)
+  await storage.saveTemplateSource(user.organizationId, hash, buffer)
+  return { sourceHash: hash, ...info }
+}
+
+async function createTemplate(user, { name, description, ...input }) {
   const title = String(name || "").trim()
   if (!title) throw badRequest("Template name is required")
-  const version = prepareVersion({ html, schema, settings })
+  const version = await prepareVersion(input, user.organizationId)
   return AppDataSource.transaction(async (m) => {
     const template = await m.getRepository("Template").save({
       organizationId: user.organizationId,
@@ -71,7 +108,7 @@ async function createTemplate(user, { name, description, html, schema, settings 
 }
 
 async function addVersion(user, templateId, input) {
-  const prepared = prepareVersion(input)
+  const prepared = await prepareVersion(input, user.organizationId)
   return AppDataSource.transaction(async (m) => {
     const template = await m
       .getRepository("Template")
@@ -125,4 +162,4 @@ async function nextDocumentNo(manager, template, version) {
   return `${numberPrefix}${String(seq).padStart(numberPadding, "0")}`
 }
 
-module.exports = { createTemplate, addVersion, getTemplate, getVersion, nextDocumentNo, prepareVersion }
+module.exports = { createTemplate, addVersion, getTemplate, getVersion, nextDocumentNo, prepareVersion, uploadSource }

@@ -64,9 +64,10 @@ const requireRole = (...roles) => (req, res, next) => {
   next()
 }
 
-// Blocks cross-site form posts: browsers can't send JSON cross-origin without CORS.
+// Blocks cross-site form posts: browsers can't send JSON (or a PDF body)
+// cross-origin without a CORS preflight, which this server never approves.
 function requireJsonForWrites(req, res, next) {
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !req.is("application/json")) {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !req.is("application/json") && !req.is("application/pdf")) {
     throw new HttpError(415, "Send requests as JSON")
   }
   next()

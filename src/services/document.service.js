@@ -1,7 +1,8 @@
 const { AppDataSource, repo } = require("../config/database")
 const { normalizeData, verifyFields } = require("../lib/schema")
-const { renderDocument } = require("../lib/render")
-const { htmlToPdf } = require("./pdf.service")
+const { renderDocument, buildContext, qrDataUrl } = require("../lib/render")
+const { htmlToPdf, imageToPng } = require("./pdf.service")
+const { renderOverlay } = require("../lib/pdf-overlay")
 const storage = require("./storage.service")
 const { getTemplate, getVersion, nextDocumentNo } = require("./template.service")
 const {
@@ -190,8 +191,7 @@ async function approveAndIssue(req, id) {
       reviewNote: null,
     })
 
-    const html = await renderIssued(req, doc, org, version)
-    const pdf = await htmlToPdf(html)
+    const pdf = await toPdf(await renderIssued(req, doc, org, version))
     doc.pdfPath = await storage.savePdf(org.id, doc.id, pdf)
     doc.pdfHash = sha256(pdf)
 
@@ -249,10 +249,44 @@ async function startCorrection(req, id) {
 }
 
 // ---- Rendering -------------------------------------------------------------
+// Every render returns { kind: "html" | "pdf", body }. HTML templates produce HTML
+// (turned into a PDF by Chrome); PDF templates print straight onto the original.
 
-async function renderIssued(req, doc, org, version) {
+const STAMPS = { draft: "DRAFT · NOT VALID", revoked: "REVOKED · NOT VALID", superseded: "SUPERSEDED · NOT VALID", preview: "PREVIEW · NOT VALID" }
+
+async function renderOutput(p) {
+  const { version } = p
+  if (version.kind !== "pdf") return { kind: "html", body: await renderDocument(p) }
+
+  const context = await buildContext(p)
+  if (p.preview) {
+    // Show every box filled so the admin can check positions.
+    context.approvedBy = context.approvedBy || context.preparedBy
+    context.qr = context.qr || (await qrDataUrl(`${p.baseUrl}/v/PREVIEW`))
+    context.document.verificationCode = context.document.verificationCode || "PREV-IEW0-0000-0000-0000-0000"
+    context.document.issuedAt = context.document.issuedAt || new Date().toISOString()
+  }
+  const source = await storage.readTemplateSource(p.org.id, version.sourceHash)
+  if (sha256(source) !== version.sourceHash) throw new Error("Template PDF doesn't match its fingerprint")
+  let stamp = p.stamp
+  if (stamp === undefined) stamp = p.preview ? STAMPS.preview : context.isDraft ? STAMPS.draft : null
+  const body = await renderOverlay({
+    source,
+    layout: version.layout,
+    schema: version.schema,
+    context,
+    stamp,
+    toPng: imageToPng,
+  })
+  return { kind: "pdf", body }
+}
+
+const toPdf = async (out) => (out.kind === "pdf" ? out.body : htmlToPdf(out.body))
+
+// `stamp`: optional label across the page (used for revoked/superseded copies).
+async function renderIssued(req, doc, org, version, { stamp } = {}) {
   const p = doc.signedPayload
-  return renderDocument({
+  return renderOutput({
     version,
     data: p.data,
     org,
@@ -260,6 +294,7 @@ async function renderIssued(req, doc, org, version) {
     preparedBy: p.preparedBy,
     approvedBy: p.approvedBy,
     baseUrl: baseUrl(req),
+    stamp: stamp === undefined ? null : stamp,
   })
 }
 
@@ -268,21 +303,22 @@ async function renderForDashboard(req, doc) {
   const version = await getVersion(doc.organizationId, doc.templateVersionId)
   if (doc.signedPayload) return renderIssued(req, doc, org, version)
   const preparer = await repo("User").findOne({ where: { id: doc.createdBy } })
-  return renderDocument({ version, data: doc.data, org, document: doc, preparedBy: preparer, baseUrl: baseUrl(req) })
+  return renderOutput({ version, data: doc.data, org, document: doc, preparedBy: preparer, baseUrl: baseUrl(req) })
 }
 
-async function renderPreview(req, { html, schema, data }) {
+async function renderPreview(req, input) {
   const { prepareVersion } = require("./template.service")
-  const version = prepareVersion({ html, schema, settings: {} })
+  const version = await prepareVersion({ ...input, settings: {} }, req.user.organizationId)
   const org = await repo("Organization").findOne({ where: { id: req.user.organizationId } })
-  return renderDocument({
-    version: { id: null, html: version.html },
-    data: normalizeData(version.schema, data || {}),
+  return renderOutput({
+    version: { ...version, id: null },
+    data: normalizeData(version.schema, input.data || {}),
     org,
     document: { documentNo: "SAMPLE-0001", status: "draft" },
     preparedBy: req.user,
     approvedBy: req.user,
     baseUrl: baseUrl(req),
+    preview: version.kind === "pdf",
   })
 }
 
@@ -363,6 +399,8 @@ module.exports = {
   startCorrection,
   renderForDashboard,
   renderIssued,
+  toPdf,
+  STAMPS,
   renderPreview,
   findForVerification,
   verificationReport,

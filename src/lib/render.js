@@ -84,7 +84,7 @@ async function qrDataUrl(url) {
  * @param {object} p.preparedBy / p.approvedBy  users
  * @param {string} p.baseUrl
  */
-async function renderDocument(p) {
+async function buildContext(p) {
   const doc = p.document || {}
   const isDraft = doc.status !== "issued" || !doc.publicId
   const verifyUrl = doc.publicId ? `${p.baseUrl}/v/${doc.publicId}` : ""
@@ -104,6 +104,12 @@ async function renderDocument(p) {
     approvedBy: isDraft ? null : personView(p.approvedBy, doc.issuedAt),
     isDraft,
   }
+  return context
+}
+
+async function renderDocument(p) {
+  const context = await buildContext(p)
+  const isDraft = context.isDraft
   let html = compile(p.version.id, p.version.html)(context)
   if (isDraft && p.watermark !== false) {
     html = html.includes("</body>") ? html.replace("</body>", `${DRAFT_OVERLAY}</body>`) : html + DRAFT_OVERLAY
@@ -111,4 +117,4 @@ async function renderDocument(p) {
   return html
 }
 
-module.exports = { renderDocument, checkTemplateSyntax, qrDataUrl }
+module.exports = { renderDocument, buildContext, checkTemplateSyntax, qrDataUrl }

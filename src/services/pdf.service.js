@@ -73,6 +73,27 @@ async function htmlToPdf(html) {
   }
 }
 
+// Converts an image the PDF library can't embed directly (WebP, GIF, SVG) into PNG.
+async function imageToPng(dataUrl) {
+  if (!/^data:image\/(webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(String(dataUrl))) {
+    throw new Error("Unsupported image")
+  }
+  const browser = await getBrowser()
+  const page = await browser.newPage()
+  try {
+    await page.setRequestInterception(true)
+    page.on("request", (r) => (r.url().startsWith("data:") || r.url() === "about:blank" ? r.continue() : r.abort()))
+    await page.setJavaScriptEnabled(false)
+    await page.setContent(`<html><body style="margin:0;background:transparent"><img id="i" src="${dataUrl}" style="display:block;max-width:1200px;max-height:1200px"></body></html>`, { waitUntil: "load", timeout: 15000 })
+    const img = await page.$("#i")
+    const box = await img.boundingBox()
+    if (!box || box.width < 1 || box.height < 1) throw new Error("Image has no size")
+    return Buffer.from(await img.screenshot({ type: "png", omitBackground: true }))
+  } finally {
+    await page.close().catch(() => {})
+  }
+}
+
 async function closeBrowser() {
   if (browserPromise) {
     const b = await browserPromise.catch(() => null)
@@ -81,4 +102,4 @@ async function closeBrowser() {
   }
 }
 
-module.exports = { htmlToPdf, closeBrowser, isAllowed }
+module.exports = { htmlToPdf, imageToPng, closeBrowser, isAllowed }

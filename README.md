@@ -5,7 +5,11 @@ Companies upload their certificate/report templates, issue documents with a QR c
 ## How it works
 
 1. **A company signs up.** It gets its own users, templates, documents and an Ed25519 signing key. The private key is encrypted with `APP_SECRET` and never leaves the server.
-2. **An admin adds a template.** Each template has a **layout** (HTML with Handlebars placeholders — paste it or upload a `.html`/`.hbs` file) and a **field list** (built in the dashboard). Saving changes creates a new version; documents keep the version they were made with.
+2. **An admin adds a template**, in one of two ways:
+   - **Upload the company's PDF form (recommended).** Draw a box on the page wherever information goes and say what it is; that creates the input field. Place the QR code, signatures and document number the same way. The design stays exactly as it is — data is printed onto the original pages.
+   - **Write an HTML layout** with Handlebars placeholders, for developers or documents with long variable tables.
+
+   Saving changes creates a new version; documents keep the version they were made with.
 3. **An issuer fills in the form** generated from the fields — including tables, which can be pasted from Excel — and submits it.
 4. **An approver issues it.** A different person must approve (can be turned off per company). On issue the document is locked, the content is signed, the approver's name/signature is added, and the official PDF is generated with a QR code pointing to `/v/<code>`.
 5. **A partner scans the QR code** and sees:
@@ -46,7 +50,24 @@ npm start                     # http://localhost:3100
 | **Approver** | Everything an issuer can, plus approve/issue, send back, revoke |
 | **Admin** | Everything, plus templates, people, company settings, activity log |
 
-## Writing templates
+## PDF form templates
+
+Dashboard → Templates → Add template → **Upload your PDF form**.
+
+1. Upload a blank copy of the form (up to 15 MB, 30 pages). Password-protected PDFs are rejected. If the PDF has fillable fields, the editor offers to add them automatically.
+2. **Drag a box** where a value should be printed and choose what goes there: a new field (text, long text, number, date, dropdown, tick box, image), a field that already exists, something filled in automatically (QR code, document number, verification code, issue date, company name/logo, prepared-by / approved-by name, qualification, signature, date), or a **table column**.
+3. For tables, draw the box on the **first row** of each column. Set the row spacing and rows per page so the dashed guide boxes line up with the rows on the form. Extra rows continue on a copy of the page (header fields repeat).
+4. Drag boxes to move them, drag the corner to resize, use arrow keys to nudge (Shift for bigger steps), Delete to remove. **Preview** fills every box with example values.
+
+How it stays secure:
+- The uploaded form is stored under its SHA-256 fingerprint. The fingerprint and box layout are part of each template version's hash, which is signed into every issued document. If the stored form is swapped, rendering refuses.
+- Issued PDFs are built from copies of the pages only: form fields are flattened and annotations, links and scripts are dropped, so nothing in the result is editable.
+- Text is printed with the standard Helvetica font. Characters outside Western European (Latin-1) are replaced (e.g. ₦ becomes "N").
+- Page rotation and crop boxes are handled, so scans saved sideways still line up.
+
+`seeds/pressure-test/` has a sample form (`form.pdf`, regenerate with `node scripts/make-sample-form.js`) and its layout; `npm run seed:demo` creates it as a second demo template.
+
+## Writing HTML templates
 
 Layouts are HTML + [Handlebars](https://handlebarsjs.com/guide/). Each field key is a placeholder (`{{employerName}}`). Also available:
 
@@ -95,7 +116,7 @@ createdb certificate_generator_test
 PGDATABASE=certificate_generator_test npm test
 ```
 
-They cover the full lifecycle, four-eyes approval, tampering with the database and the PDF file, corrections, revocation, isolation between companies, blocking templates from reading server files or internal services, and old QR redirects.
+They cover the full lifecycle, PDF form templates (upload checks, fillable-field detection, overflow pages, flattening, swapped forms), four-eyes approval, tampering with the database and the PDF file, corrections, revocation, isolation between companies, blocking templates from reading server files or internal services, and old QR redirects.
 
 ## Before going live
 
@@ -112,11 +133,13 @@ They cover the full lifecycle, four-eyes approval, tampering with the database a
 server.js                 start-up
 src/app.js                Express app, security headers
 src/entities/             database tables
-src/lib/                  auth, signing/hashing, field schema, template rendering
+src/lib/                  auth, signing/hashing, field schema, template rendering,
+                          pdf-overlay.js (PDF form templates: inspect, validate, print onto pages)
 src/services/             templates, documents (issue/revoke/correct/verify), PDF, storage
 src/routes/               auth, dashboard API, public verify pages
 public/                   dashboard (app.html + assets)
-seeds/lifting-inspection/ the original LOLER certificate as a template
+seeds/lifting-inspection/ the original LOLER certificate as an HTML template
+seeds/pressure-test/      a sample PDF form with its field layout
 scripts/                  demo seed, legacy import
 test/                     end-to-end tests
 ```

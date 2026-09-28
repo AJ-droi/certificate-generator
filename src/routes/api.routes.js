@@ -8,6 +8,7 @@ const documents = require("../services/document.service")
 const storage = require("../services/storage.service")
 const { audit } = require("../lib/audit")
 const renderCache = require("../lib/render-cache")
+const { SYSTEM_ITEMS, unplacedFields } = require("../lib/pdf-overlay")
 const { randomPassword } = require("../lib/crypto")
 const { badRequest, notFound, conflict } = require("../lib/errors")
 
@@ -138,7 +139,7 @@ router.get("/templates", async (req, res) => {
   const versions = list.length
     ? await repo("TemplateVersion")
         .createQueryBuilder("v")
-        .select(["v.id", "v.version", "v.schema", "v.settings", "v.createdAt"])
+        .select(["v.id", "v.version", "v.kind", "v.schema", "v.settings", "v.createdAt"])
         .where("v.id IN (:...ids)", { ids: list.map((t) => t.currentVersionId).filter(Boolean) })
         .getMany()
     : []
@@ -150,8 +151,40 @@ router.get("/templates", async (req, res) => {
 
 router.post("/templates", requireRole("admin"), async (req, res) => {
   const { template, version } = await templates.createTemplate(req.user, req.body || {})
-  await audit(req, "template.created", { entityType: "template", entityId: template.id, details: { name: template.name } })
-  res.status(201).json({ template, version })
+  await audit(req, "template.created", { entityType: "template", entityId: template.id, details: { name: template.name, kind: version.kind } })
+  const unplaced = version.kind === "pdf" ? unplacedFields(version.schema, version.layout) : []
+  res.status(201).json({ template, version, unplaced })
+})
+
+// Upload the company's PDF form. Returns its fingerprint, page sizes and any
+// fillable form fields the editor can turn into fields automatically.
+router.post(
+  "/templates/pdf-source",
+  requireRole("admin"),
+  express.raw({ type: "application/pdf", limit: "15mb" }),
+  async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || !req.is("application/pdf")) throw badRequest("Upload a PDF file")
+    const result = await templates.uploadSource(req.user, req.body)
+    await audit(req, "template.pdf_uploaded", {
+      entityType: "template_source",
+      entityId: result.sourceHash,
+      details: { pages: result.pageCount, bytes: req.body.length, formFields: result.formFields.length },
+    })
+    res.status(201).json(result)
+  },
+)
+
+router.get("/templates/pdf-source/:hash", async (req, res) => {
+  if (!/^[a-f0-9]{64}$/.test(req.params.hash)) throw notFound()
+  if (!(await storage.hasTemplateSource(req.user.organizationId, req.params.hash))) throw notFound()
+  const pdf = await storage.readTemplateSource(req.user.organizationId, req.params.hash)
+  res.setHeader("Content-Type", "application/pdf")
+  res.setHeader("Cache-Control", "private, max-age=3600")
+  res.send(pdf)
+})
+
+router.get("/templates/system-items", (req, res) => {
+  res.json({ items: Object.entries(SYSTEM_ITEMS).map(([key, v]) => ({ key, ...v })) })
 })
 
 router.get("/templates/:id", async (req, res) => {
@@ -192,12 +225,13 @@ router.post("/templates/:id/versions", requireRole("admin"), async (req, res) =>
       details: { version: result.version.version },
     })
   }
-  res.status(result.unchanged ? 200 : 201).json(result)
+  const warnings = result.version.kind === "pdf" ? unplacedFields(result.version.schema, result.version.layout) : []
+  res.status(result.unchanged ? 200 : 201).json({ ...result, unplaced: warnings })
 })
 
 router.post("/templates/preview", async (req, res) => {
-  const html = await documents.renderPreview(req, req.body || {})
-  res.json({ previewUrl: `/render/${renderCache.put(html)}` })
+  const out = await documents.renderPreview(req, req.body || {})
+  res.json({ kind: out.kind, previewUrl: `/render/${renderCache.put(out)}` })
 })
 
 // ---- Documents -------------------------------------------------------------------
@@ -294,8 +328,8 @@ router.post("/documents/:id/correct", async (req, res) => {
 
 router.get("/documents/:id/render", async (req, res) => {
   const doc = await orgDocument(req)
-  const html = await documents.renderForDashboard(req, doc)
-  res.json({ previewUrl: `/render/${renderCache.put(html)}` })
+  const out = await documents.renderForDashboard(req, doc)
+  res.json({ kind: out.kind, previewUrl: `/render/${renderCache.put(out)}` })
 })
 
 router.get("/documents/:id/pdf", async (req, res) => {

@@ -25,7 +25,7 @@ let base
 // Minimal cookie-aware client.
 function client() {
   let cookie = ""
-  return async function call(method, url, body, headers = {}) {
+  const call = async function (method, url, body, headers = {}) {
     const res = await fetch(base + url, {
       method,
       redirect: "manual",
@@ -37,11 +37,15 @@ function client() {
       body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
     })
     const set = res.headers.get("set-cookie")
-    if (set) cookie = set.split(";")[0]
+    if (set) {
+      cookie = set.split(";")[0]
+      call.cookie = cookie
+    }
     const type = res.headers.get("content-type") || ""
     const data = type.includes("json") ? await res.json() : type.includes("pdf") ? Buffer.from(await res.arrayBuffer()) : await res.text()
     return { status: res.status, data, headers: res.headers }
   }
+  return call
 }
 
 const SCHEMA = [
@@ -318,4 +322,151 @@ test("every action is in the audit log", async () => {
     assert.ok(actions.has(a), `missing ${a}`)
   }
   assert.equal((await issuer("GET", "/api/audit")).status, 403)
+})
+
+// ---- PDF form templates -------------------------------------------------------------
+
+const { makeSampleForm } = require("../scripts/make-sample-form")
+
+async function pdfText(buffer) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  const fonts = path.join(path.dirname(require.resolve("pdfjs-dist/package.json")), "standard_fonts") + "/"
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, standardFontDataUrl: fonts, verbosity: 0 }).promise
+  const pages = []
+  for (let i = 1; i <= doc.numPages; i++) {
+    const content = await (await doc.getPage(i)).getTextContent()
+    pages.push(content.items.map((it) => it.str).join(" "))
+  }
+  return pages
+}
+
+async function uploadPdf(call, buffer) {
+  const res = await fetch(base + "/api/templates/pdf-source", {
+    method: "POST",
+    headers: { "content-type": "application/pdf", cookie: call.cookie },
+    body: buffer,
+  })
+  return { status: res.status, data: await res.json() }
+}
+
+const pdfAdmin = client()
+let pdfTemplateId
+let pdfSourceHash
+
+test("PDF upload: rejects non-PDFs and finds fillable form fields", async () => {
+  await pdfAdmin("POST", "/api/auth/signup", { orgName: "Pdf Co", name: "Pam", email: "pam@pdf.test", password: "pdf-pass-1234" })
+  // Grab the session cookie for raw uploads.
+  const me = await fetch(base + "/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "pam@pdf.test", password: "pdf-pass-1234" }) })
+  pdfAdmin.cookie = me.headers.get("set-cookie").split(";")[0]
+
+  const notPdf = await uploadPdf(pdfAdmin, Buffer.from("%PNG this is not a pdf file at all, just some bytes padding padding padding padding"))
+  assert.equal(notPdf.status, 400)
+
+  const issuerUpload = await fetch(base + "/api/templates/pdf-source", { method: "POST", headers: { "content-type": "application/pdf" }, body: await makeSampleForm() })
+  assert.equal(issuerUpload.status, 401)
+
+  const r = await uploadPdf(pdfAdmin, await makeSampleForm({ fillable: true }))
+  assert.equal(r.status, 201, JSON.stringify(r.data))
+  assert.equal(r.data.pageCount, 1)
+  assert.match(r.data.sourceHash, /^[a-f0-9]{64}$/)
+  const names = r.data.formFields.map((f) => f.name).sort()
+  assert.deepEqual(names, ["client_name", "result.accepted"])
+  const client = r.data.formFields.find((f) => f.name === "client_name")
+  assert.equal(client.type, "text")
+  assert.ok(Math.abs(client.x - 380) < 1 && Math.abs(client.w - 185) < 1, JSON.stringify(client))
+  pdfSourceHash = r.data.sourceHash
+})
+
+test("PDF template: layout is validated against the fields and pages", async () => {
+  const schema = [{ key: "client", label: "Client", type: "text", required: true }]
+  const bad = await pdfAdmin("POST", "/api/templates", {
+    name: "Bad", kind: "pdf", sourceHash: pdfSourceHash, schema,
+    layout: { items: [{ kind: "field", key: "nope", page: 0, x: 10, y: 10, w: 50, h: 12 }, { kind: "field", key: "client", page: 3, x: 10, y: 10, w: 50, h: 12 }] },
+  })
+  assert.equal(bad.status, 400)
+  assert.equal(bad.data.details.errors.length, 2)
+  const missing = await pdfAdmin("POST", "/api/templates", { name: "X", kind: "pdf", sourceHash: "0".repeat(64), schema, layout: { items: [] } })
+  assert.equal(missing.status, 400)
+})
+
+test("PDF template: issuing prints data onto the original pages, extra rows continue", async () => {
+  const tpl = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "seeds", "pressure-test", "template.json"), "utf8"))
+  const up = await uploadPdf(pdfAdmin, await makeSampleForm())
+  const created = await pdfAdmin("POST", "/api/templates", { ...tpl, kind: "pdf", sourceHash: up.data.sourceHash })
+  assert.equal(created.status, 201, JSON.stringify(created.data))
+  assert.equal(created.data.version.kind, "pdf")
+  assert.deepEqual(created.data.unplaced, [])
+  pdfTemplateId = created.data.template.id
+
+  // A placement off the edge of the page is pulled back onto it.
+  const clamp = await pdfAdmin("POST", "/api/templates/preview", {
+    kind: "pdf", sourceHash: up.data.sourceHash, schema: tpl.schema,
+    layout: { items: [{ kind: "field", key: "client", page: 0, x: 590, y: 10, w: 100, h: 12 }] }, data: {},
+  })
+  assert.equal(clamp.status, 200)
+  assert.equal(clamp.data.kind, "pdf")
+
+  await pdfAdmin("PATCH", "/api/org", { requireSeparateApprover: false })
+  const data = { ...tpl.settings.sampleData, client: "Zenith Offshore Ltd", items: Array.from({ length: 15 }, (_, i) => ({ tag: `TAG-${i + 1}`, description: `Spool ${i + 1}`, size: "4\"", rating: "300#", result: "PASS", remarks: "" })) }
+  const d = (await pdfAdmin("POST", "/api/documents", { templateId: pdfTemplateId, data })).data.document
+  assert.equal(d.documentNo, "PT/0001")
+
+  const draftPreview = await pdfAdmin("GET", `/api/documents/${d.id}/render`)
+  assert.equal(draftPreview.data.kind, "pdf")
+  const draftPdf = await anon("GET", draftPreview.data.previewUrl)
+  const draftText = (await pdfText(draftPdf.data)).join(" ")
+  assert.match(draftText, /DRAFT/)
+
+  const issued = await pdfAdmin("POST", `/api/documents/${d.id}/approve`, {})
+  assert.equal(issued.status, 200, JSON.stringify(issued.data))
+  const pdf = (await pdfAdmin("GET", `/api/documents/${d.id}/pdf`)).data
+  const pages = await pdfText(pdf)
+  assert.equal(pages.length, 2, "15 rows with 12 per page should make 2 pages")
+  assert.match(pages[0], /Zenith Offshore Ltd/)
+  assert.match(pages[0], /PT\/0001/)
+  assert.match(pages[0], /TAG-12/)
+  assert.doesNotMatch(pages[0], /TAG-13/)
+  assert.match(pages[1], /TAG-13/)
+  assert.match(pages[1], /TAG-15/)
+  assert.match(pages[1], /Zenith Offshore Ltd/, "header fields repeat on continuation pages")
+  assert.match(pages[0], /PRESSURE TEST CERTIFICATE/, "the original form is underneath")
+  assert.doesNotMatch(pages.join(" "), /DRAFT/)
+  const code = issued.data.document.publicId.match(/.{4}/g).join("-")
+  assert.ok(pages[0].includes(code), "verification code printed")
+
+  const v = await anon("GET", `/api/public/verify/${issued.data.document.publicId}`)
+  assert.equal(v.data.verdict, "valid")
+  assert.equal(v.data.checks.recordMatches, true)
+  const docView = await anon("GET", `/v/${issued.data.document.publicId}/document`)
+  assert.equal(docView.headers.get("content-type"), "application/pdf")
+})
+
+test("PDF template: fillable fields are flattened, and the stored form can't be swapped", async () => {
+  const up = await uploadPdf(pdfAdmin, await makeSampleForm({ fillable: true }))
+  const schema = [{ key: "client", label: "Client", type: "text" }]
+  const t = await pdfAdmin("POST", "/api/templates", {
+    name: "Fillable", kind: "pdf", sourceHash: up.data.sourceHash, schema,
+    layout: { items: [{ kind: "field", key: "client", page: 0, x: 380, y: 125, w: 185, h: 13 }, { kind: "system", key: "qr", page: 0, x: 496, y: 39, w: 56, h: 56 }] },
+  })
+  const d = (await pdfAdmin("POST", "/api/documents", { templateId: t.data.template.id, data: { client: "Flat Co" } })).data.document
+  await pdfAdmin("POST", `/api/documents/${d.id}/approve`, {})
+  const pdf = (await pdfAdmin("GET", `/api/documents/${d.id}/pdf`)).data
+  const { PDFDocument } = require("pdf-lib")
+  const out = await PDFDocument.load(pdf)
+  assert.equal(out.getForm().getFields().length, 0, "no editable form fields left in the issued PDF")
+  const annots = out.getPage(0).node.Annots()
+  assert.ok(!annots || annots.size() === 0, "no annotations/widgets left")
+
+  // Swap the stored blank form: rendering refuses rather than printing on the wrong design.
+  const [row] = await AppDataSource.query("SELECT organization_id FROM template_versions WHERE template_id = $1", [t.data.template.id])
+  const file = path.join(process.env.STORAGE_DIR, "templates", row.organization_id, `${up.data.sourceHash}.pdf`)
+  const original = fs.readFileSync(file)
+  fs.writeFileSync(file, await makeSampleForm())
+  const r = await pdfAdmin("GET", `/api/documents/${d.id}/render`)
+  assert.equal(r.status, 500)
+  fs.writeFileSync(file, original)
+  assert.equal((await pdfAdmin("GET", `/api/documents/${d.id}/render`)).status, 200)
+
+  // Other companies can't read this company's uploaded form.
+  assert.equal((await other("GET", `/api/templates/pdf-source/${up.data.sourceHash}`)).status, 404)
 })

@@ -21,7 +21,8 @@ function createApp() {
     res.setHeader("X-Frame-Options", "SAMEORIGIN")
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; " +
+      // 'wasm-unsafe-eval' lets pdf.js decode scanned (JBIG2/JPEG 2000) PDFs; it doesn't allow eval().
+      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; " +
         "frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'",
     )
     next()
@@ -32,6 +33,11 @@ function createApp() {
   app.use(loadUser)
 
   app.use("/assets", express.static(path.join(__dirname, "..", "public", "assets"), { maxAge: "1h" }))
+  // pdf.js, served from this server so the dashboard can show PDFs without a CDN.
+  const pdfjs = path.dirname(require.resolve("pdfjs-dist/package.json"))
+  for (const dir of ["build", "wasm", "standard_fonts", "cmaps"]) {
+    app.use(`/vendor/pdfjs/${dir}`, express.static(path.join(pdfjs, dir), { maxAge: "7d", index: false }))
+  }
   app.use("/images", express.static(path.join(__dirname, "..", "public", "images"), { maxAge: "1h" }))
   app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "..", "public", "app.html")))
   app.get("/healthz", (req, res) => res.json({ ok: true }))

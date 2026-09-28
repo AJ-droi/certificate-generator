@@ -67,7 +67,12 @@ const TemplateVersion = new EntitySchema({
     templateId: { type: "uuid", name: "template_id" },
     organizationId: { type: "uuid", name: "organization_id" },
     version: { type: "int" },
-    html: { type: "text" },
+    // "html": layout written as HTML + Handlebars. "pdf": the company's own PDF with
+    // boxes placed on it (layout) — data is printed onto the original pages.
+    kind: { type: "varchar", length: 10, default: "html" },
+    html: { type: "text", default: "" },
+    layout: { type: "jsonb", nullable: true },
+    sourceHash: { type: "varchar", length: 64, name: "source_hash", nullable: true },
     schema: { type: "jsonb" },
     settings: { type: "jsonb", default: () => "'{}'" },
     contentHash: { type: "varchar", length: 64, name: "content_hash" },

@@ -157,7 +157,10 @@ router.get("/v/:code/document", verifyLimiter, async (req, res) => {
   if (!doc) return notFoundPage(res)
   const org = await repo("Organization").findOne({ where: { id: doc.organizationId } })
   const version = await repo("TemplateVersion").findOne({ where: { id: doc.templateVersionId } })
-  let html = await documents.renderIssued(req, doc, org, version)
+  const stamp = doc.status === "issued" ? null : documents.STAMPS[doc.status]
+  const out = await documents.renderIssued(req, doc, org, version, { stamp })
+  if (out.kind === "pdf") return renderCache.sendPdf(res, out.body, `${doc.documentNo}.pdf`)
+  let html = out.body
   if (doc.status !== "issued") {
     const label = doc.status === "revoked" ? "REVOKED" : "SUPERSEDED"
     const overlay = `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2147483647"><span style="transform:rotate(-30deg);font:700 72px Arial;color:rgba(200,0,0,.25);border:6px solid rgba(200,0,0,.25);padding:12px 32px">${label}</span></div>`
@@ -222,9 +225,9 @@ router.get("/api/public/config", (req, res) => {
 // ---- Sandboxed previews for the dashboard -------------------------------------------
 
 router.get("/render/:token", (req, res) => {
-  const html = renderCache.get(req.params.token)
-  if (!html) return res.status(404).send("Preview expired — reload it from the dashboard.")
-  renderCache.sendSandboxed(res, html)
+  const out = renderCache.get(req.params.token)
+  if (!out) return res.status(404).send("Preview expired — reload it from the dashboard.")
+  renderCache.send(res, out)
 })
 
 // ---- QR codes printed before this platform ------------------------------------------

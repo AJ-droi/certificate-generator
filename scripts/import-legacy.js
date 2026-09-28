@@ -11,8 +11,8 @@ const { AppDataSource, initializeDatabase, repo } = require("../src/config/datab
 const { createTemplate, getVersion } = require("../src/services/template.service")
 const { normalizeData } = require("../src/lib/schema")
 const { signPayload, sha256, newPublicId } = require("../src/lib/crypto")
-const { renderIssued } = require("../src/services/document.service")
-const { htmlToPdf, closeBrowser } = require("../src/services/pdf.service")
+const { renderIssued, toPdf } = require("../src/services/document.service")
+const { closeBrowser } = require("../src/services/pdf.service")
 const storage = require("../src/services/storage.service")
 
 const SEED = path.join(__dirname, "..", "seeds", "lifting-inspection")
@@ -160,7 +160,7 @@ async function main() {
       Object.assign(doc, {
         status: "issued", publicId, issuedAt, issuedBy: admin.id, signedPayload, contentHash, signature, keyId: org.keyId,
       })
-      const pdf = await htmlToPdf(await renderIssued(req, doc, org, version))
+      const pdf = await toPdf(await renderIssued(req, doc, org, version))
       doc.pdfPath = await storage.savePdf(org.id, doc.id, pdf)
       doc.pdfHash = sha256(pdf)
       await tx.getRepository("Document").save(doc)
