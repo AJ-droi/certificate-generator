@@ -4,9 +4,12 @@
   "description": "Multi-company platform for issuing tamper-evident, QR-verifiable documents from uploaded templates",
   "main": "server.js",
   "scripts": {
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d --wait db",
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --env-file-if-exists=.env --watch server.js",
-    "test": "node --env-file-if-exists=.env --test test/e2e.test.js",
+    "test": "PGDATABASE=certificate_generator_test node --env-file-if-exists=.env --test test/e2e.test.js",
     "seed:demo": "node --env-file-if-exists=.env scripts/seed-demo.js",
     "import:legacy": "node --env-file-if-exists=.env scripts/import-legacy.js"
   },
