@@ -376,3 +376,6 @@ dialog.wide { width: min(1000px, 95vw); }
 .pbox.erasing { border-style: dashed; }
 .erase-box { border-top: 1px solid var(--line); padding-top: 10px; }
 .color-in { width: 44px; min-height: 30px; height: 30px; padding: 2px; cursor: pointer; }
+
+.flabel { display: block; font-weight: 550; font-size: 0.9rem; margin-bottom: 4px; }
+.pcover { position: absolute; pointer-events: none; }

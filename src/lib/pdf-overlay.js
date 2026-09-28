@@ -197,6 +197,9 @@ function validateLayout(layout, schema, pages) {
       if (num(fs) && fs >= 4 && fs <= 72) item.fontSize = fs
     }
     if (["left", "center", "right"].includes(raw.align)) item.align = raw.align
+    if (["sans", "serif", "mono"].includes(raw.font) && raw.font !== "sans") item.font = raw.font
+    if (raw.bold === true) item.bold = true
+    if (/^#[0-9a-f]{6}$/i.test(String(raw.color || ""))) item.color = raw.color.toLowerCase()
     // "Erase what's printed underneath": applied by the editor, which uploads a
     // cleaned copy of the form. Kept here so the editor can redo it later.
     if (raw.erase === true) {
@@ -307,7 +310,8 @@ function drawTextBox(page, g, font, box, text, { multiline = false, fontSize, al
   if (!value) return
   const pad = Math.min(2, box.w * 0.05)
   const innerW = Math.max(1, box.w - pad * 2)
-  let size = fontSize || Math.min(11, Math.max(5, box.h * 0.7))
+  // Auto size: fill the box height (like the text it replaces), then shrink to fit the width.
+  let size = fontSize || (multiline ? Math.min(12, Math.max(5, box.h * 0.72)) : Math.max(5, box.h * 0.72))
   let lines
 
   if (multiline) {
@@ -427,6 +431,21 @@ async function renderOverlay({ source, layout, schema, context, stamp, toPng }) 
   const out = await PDFDocument.create()
   const font = await out.embedFont(StandardFonts.Helvetica)
   const stampFont = await out.embedFont(StandardFonts.HelveticaBold)
+  const FONTS = {
+    sans: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+    serif: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold],
+    mono: [StandardFonts.Courier, StandardFonts.CourierBold],
+  }
+  const fontCache = new Map()
+  async function fontFor(item) {
+    const name = FONTS[item.font || "sans"][item.bold ? 1 : 0]
+    if (!fontCache.has(name)) fontCache.set(name, await out.embedFont(name))
+    return fontCache.get(name)
+  }
+  const hexColor = (hex) => {
+    const n = parseInt(hex.slice(1), 16)
+    return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255)
+  }
   const fields = new Map(schema.map((f) => [f.key, f]))
   const imageCache = new Map()
 
@@ -481,7 +500,8 @@ async function renderOverlay({ source, layout, schema, context, stamp, toPng }) 
 
     for (const item of items) {
       const box = { x: item.x, y: item.y, w: item.w, h: item.h }
-      const opts = { fontSize: item.fontSize, align: item.align }
+      const opts = { fontSize: item.fontSize, align: item.align, ...(item.color ? { color: hexColor(item.color) } : {}) }
+      const itemFont = await fontFor(item)
       if (item.kind === "field") {
         const f = fields.get(item.key)
         const v = context.data[item.key]
@@ -491,7 +511,7 @@ async function renderOverlay({ source, layout, schema, context, stamp, toPng }) 
           const img = await image(v)
           if (img) await drawImageBox(page, g, img, box)
         } else {
-          drawTextBox(page, g, font, box, valueFor(f, v), { ...opts, multiline: f.type === "textarea" })
+          drawTextBox(page, g, itemFont, box, valueFor(f, v), { ...opts, multiline: f.type === "textarea" })
         }
       } else if (item.kind === "system") {
         const def = SYSTEM_ITEMS[item.key]
@@ -502,10 +522,10 @@ async function renderOverlay({ source, layout, schema, context, stamp, toPng }) 
           if (img) await drawImageBox(page, g, img, box)
         } else if (item.key === "approvedBy.name" && !context.approvedBy) {
           // Not approved yet: say so where the approver's name will go.
-          drawTextBox(page, g, font, box, "Awaiting approval", { ...opts, color: rgb(0.45, 0.47, 0.5) })
+          drawTextBox(page, g, itemFont, box, "Awaiting approval", { ...opts, color: rgb(0.45, 0.47, 0.5) })
         } else {
           const raw = systemValue(item.key, context)
-          drawTextBox(page, g, font, box, def.type === "date" ? formatDateValue(raw) : raw || "", opts)
+          drawTextBox(page, g, itemFont, box, def.type === "date" ? formatDateValue(raw) : raw || "", opts)
         }
       } else if (item.kind === "column") {
         const t = layout.tables[item.table]
@@ -516,11 +536,11 @@ async function renderOverlay({ source, layout, schema, context, stamp, toPng }) 
         chunk.forEach((row, r) => {
           const rowBox = { ...box, y: box.y + r * t.rowHeight }
           if (col.key === "#") {
-            drawTextBox(page, g, font, rowBox, String(copy * t.rowsPerPage + r + 1), opts)
+            drawTextBox(page, g, itemFont, rowBox, String(copy * t.rowsPerPage + r + 1), opts)
           } else if (col.type === "checkbox") {
             if (row[col.key]) drawCheck(page, g, rowBox)
           } else {
-            drawTextBox(page, g, font, rowBox, valueFor(col, row[col.key]), opts)
+            drawTextBox(page, g, itemFont, rowBox, valueFor(col, row[col.key]), opts)
           }
         })
       }

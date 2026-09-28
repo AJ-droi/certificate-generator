@@ -60,13 +60,27 @@ async function createDocument(req, { templateId, data, documentNo }) {
   })
 }
 
+// Drafts aren't official yet, so they follow template changes: when a draft is
+// saved or submitted it moves to the template's current version. (Documents
+// awaiting approval keep the version the approver is looking at.)
+async function moveToLatestVersion(doc) {
+  const template = await getTemplate(doc.organizationId, doc.templateId)
+  if (template.currentVersionId && template.currentVersionId !== doc.templateVersionId) {
+    const latest = await getVersion(doc.organizationId, template.currentVersionId)
+    doc.templateVersionId = latest.id
+    doc.data = normalizeData(latest.schema, doc.data)
+    return latest
+  }
+  return getVersion(doc.organizationId, doc.templateVersionId)
+}
+
 async function updateDraft(req, id, { data, documentNo }) {
   const user = req.user
   return AppDataSource.transaction(async (m) => {
     const doc = await lockDocument(m, user.organizationId, id)
     if (doc.status !== "draft") throw conflict("Only drafts can be edited. Issued documents are locked — create a correction instead.")
     if (!canEditDraft(user, doc)) throw forbidden("Only the person who created this draft (or an admin) can edit it")
-    const version = await getVersion(user.organizationId, doc.templateVersionId)
+    const version = await moveToLatestVersion(doc)
     if (data !== undefined) doc.data = normalizeData(version.schema, data)
     if (documentNo !== undefined) doc.documentNo = cleanDocumentNo(documentNo)
     await m.getRepository("Document").save(doc)
@@ -92,7 +106,7 @@ async function submitForApproval(req, id) {
     const doc = await lockDocument(m, user.organizationId, id)
     if (doc.status !== "draft") throw conflict("Only drafts can be submitted")
     if (!canEditDraft(user, doc)) throw forbidden()
-    const version = await getVersion(user.organizationId, doc.templateVersionId)
+    const version = await moveToLatestVersion(doc)
     doc.data = normalizeData(version.schema, doc.data, { strict: true })
     doc.status = "pending_approval"
     doc.submittedAt = new Date()
@@ -300,10 +314,12 @@ async function renderIssued(req, doc, org, version, { stamp } = {}) {
 
 async function renderForDashboard(req, doc) {
   const org = await repo("Organization").findOne({ where: { id: doc.organizationId } })
-  const version = await getVersion(doc.organizationId, doc.templateVersionId)
-  if (doc.signedPayload) return renderIssued(req, doc, org, version)
+  if (doc.signedPayload) return renderIssued(req, doc, org, await getVersion(doc.organizationId, doc.templateVersionId))
+  // Drafts preview with the latest template version (they move to it on save).
+  const draft = { ...doc }
+  const version = doc.status === "draft" ? await moveToLatestVersion(draft) : await getVersion(doc.organizationId, doc.templateVersionId)
   const preparer = await repo("User").findOne({ where: { id: doc.createdBy } })
-  return renderOutput({ version, data: doc.data, org, document: doc, preparedBy: preparer, baseUrl: baseUrl(req) })
+  return renderOutput({ version, data: draft.data, org, document: draft, preparedBy: preparer, baseUrl: baseUrl(req) })
 }
 
 async function renderPreview(req, input) {
@@ -398,6 +414,7 @@ module.exports = {
   revoke,
   startCorrection,
   renderForDashboard,
+  moveToLatestVersion,
   renderIssued,
   toPdf,
   STAMPS,

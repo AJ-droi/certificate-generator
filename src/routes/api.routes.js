@@ -278,7 +278,10 @@ async function orgDocument(req) {
 
 router.get("/documents/:id", async (req, res) => {
   const doc = await orgDocument(req)
-  const version = await templates.getVersion(req.user.organizationId, doc.templateVersionId)
+  // A draft shows the latest template version's fields (it moves to it on save).
+  const version = doc.status === "draft"
+    ? await documents.moveToLatestVersion({ ...doc })
+    : await templates.getVersion(req.user.organizationId, doc.templateVersionId)
   const template = await templates.getTemplate(req.user.organizationId, doc.templateId)
   const related = await repo("Document").find({
     where: [

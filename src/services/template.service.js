@@ -158,14 +158,23 @@ async function getVersion(orgId, id) {
 }
 
 // Atomically reserves the next number for a template, e.g. "ELS/MTC-0007".
+// Skips numbers already used in the company (templates can share a prefix).
 async function nextDocumentNo(manager, template, version) {
-  const rows = await manager.query(
-    "UPDATE templates SET next_sequence = next_sequence + 1 WHERE id = $1 RETURNING next_sequence - 1 AS seq",
-    [template.id],
-  )
-  const seq = Number(rows[0][0] ? rows[0][0].seq : rows[0].seq)
   const { numberPrefix = "", numberPadding = 4 } = version.settings || {}
-  return `${numberPrefix}${String(seq).padStart(numberPadding, "0")}`
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const rows = await manager.query(
+      "UPDATE templates SET next_sequence = next_sequence + 1 WHERE id = $1 RETURNING next_sequence - 1 AS seq",
+      [template.id],
+    )
+    const seq = Number(rows[0][0] ? rows[0][0].seq : rows[0].seq)
+    const candidate = `${numberPrefix}${String(seq).padStart(numberPadding, "0")}`.toUpperCase()
+    const taken = await manager.getRepository("Document").findOne({
+      where: { organizationId: template.organizationId, documentNo: candidate },
+      select: ["id"],
+    })
+    if (!taken) return candidate
+  }
+  throw new Error("Couldn't find a free document number")
 }
 
 module.exports = { createTemplate, addVersion, getTemplate, getVersion, nextDocumentNo, prepareVersion, uploadSource }

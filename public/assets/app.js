@@ -1112,6 +1112,8 @@
     }
     if (!m.settings.sampleData || typeof m.settings.sampleData !== "object") m.settings.sampleData = {}
     const sd = () => m.settings.sampleData
+    // New boxes replace what's printed under them unless the admin turns this off.
+    let eraseByDefault = true
     let dirty = false
     let selected = null
     let placing = null // { kind, key?, table?, column?, label }
@@ -1248,25 +1250,33 @@
       }[it.key] || ""
     }
     const isMultiline = (it) => it.kind === "field" && (fieldOf(it.key) || {}).type === "textarea"
+    const FAMILIES = { sans: "Helvetica, Arial, sans-serif", serif: "'Times New Roman', Times, serif", mono: "'Courier New', Courier, monospace" }
     function valueEl(it, text, s) {
       if (!text) return null
-      const size = Math.max(5, Math.min(it.fontSize || Math.min(11, it.h * 0.7), it.h * 0.85)) * s
+      const auto = isMultiline(it) ? Math.min(12, it.h * 0.72) : it.h * 0.72
+      const size = Math.max(5, Math.min(it.fontSize || auto, it.h * 0.9)) * s
+      const color = it.kind === "system" && it.key === "approvedBy.name" ? "#777" : it.color || "#0d0d1f"
       return h("span", {
         class: `pbox-value${isMultiline(it) ? " multi" : ""}`,
-        style: `font-size:${size}px;justify-content:${it.align === "center" ? "center" : it.align === "right" ? "flex-end" : "flex-start"}${text === "✓" ? ";justify-content:center" : ""}${it.kind === "system" && it.key === "approvedBy.name" ? ";color:#777" : ""}`,
+        style: `font-size:${size}px;font-family:${FAMILIES[it.font || "sans"]};font-weight:${it.bold ? 700 : 400};color:${color};` +
+          `justify-content:${text === "✓" || it.align === "center" ? "center" : it.align === "right" ? "flex-end" : "flex-start"}`,
       }, text)
     }
 
     // ---- Boxes ----
     // `side: false` redraws only the page (keeps focus in the side panel while typing).
     function drawBoxes({ side = true } = {}) {
-      for (const { overlay } of pageEls) overlay.querySelectorAll(".pbox,.pghost").forEach((n) => n.remove())
+      for (const { overlay } of pageEls) overlay.querySelectorAll(".pbox,.pghost,.pcover").forEach((n) => n.remove())
       for (const it of m.items) {
         const pe = pageEls[it.page]
         if (!pe) continue
         const s = pe.scale
         const value = exampleFor(it)
-        const cover = it.erase ? `;background:${it.eraseColor || "#ffffff"}` : ""
+        const cover = it.erase && it.kind === "column" ? `;background:${it.eraseColor || "#ffffff"}` : ""
+        if (it.erase && it.kind !== "column") {
+          const r = eraseRect(it)
+          pe.overlay.append(h("div", { class: "pcover", style: `left:${r.x * s}px;top:${r.y * s}px;width:${r.w * s}px;height:${r.h * s}px;background:${it.eraseColor || "#ffffff"}` }))
+        }
         const el = h("div", {
           class: `pbox k-${it.kind}${selected === it.id ? " sel" : ""}${value ? " has-value" : ""}${it.erase ? " erasing" : ""}`,
           style: `left:${it.x * s}px;top:${it.y * s}px;width:${it.w * s}px;height:${it.h * s}px${cover}`,
@@ -1340,6 +1350,7 @@
           }
           clampItem(item)
           if (item.kind === "column") ensureTable(item)
+          applyNewBoxDefaults(item)
           m.items.push(item)
           selected = item.id
           markDirty()
@@ -1513,6 +1524,9 @@
           ? [h("strong", {}, `Placing: ${placing.label}`), h("p", { class: "muted", style: "margin:4px 0 8px" }, "Click on the page, or drag to draw the box."), h("button", { class: "btn small", onclick: () => { placing = null; drawSide() } }, "Cancel")]
           : [h("strong", {}, "Drag on the page to add a box"),
             h("p", { class: "muted", style: "margin:4px 0 0" }, "Draw where the information should be printed, then say what goes there. Drag boxes to move them; drag the corner to resize."),
+            h("label", { class: "check", style: "margin-top:10px;font-size:.9rem" },
+              h("input", { type: "checkbox", checked: eraseByDefault, onchange: (e) => { eraseByDefault = e.target.checked } }),
+              "New boxes replace what's printed under them"),
             h("p", { class: "muted", style: "margin:8px 0 0;font-size:.85rem" }, "Values you type here are only examples to check the layout. Your team enters the real values on each document (Documents → New document), then sends it for approval.")]))
       }
 
@@ -1635,10 +1649,17 @@
         const f = it.kind === "field" ? fieldOf(it.key) : null
         if (!f || !["checkbox", "image"].includes(f.type)) {
           rows.push(h("div", { class: "grid-2" },
-            h("label", { class: "field" }, h("span", {}, "Text size"), h("select", { onchange: (e) => { it.fontSize = e.target.value ? Number(e.target.value) : undefined; markDirty() } },
-              h("option", { value: "" }, "Auto (fit)"), [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 24].map((n) => h("option", { value: n, selected: it.fontSize === n ? true : null }, `${n} pt`)))),
-            h("label", { class: "field" }, h("span", {}, "Align"), h("select", { onchange: (e) => { it.align = e.target.value; markDirty() } },
-              ["left", "center", "right"].map((a) => h("option", { value: a, selected: (it.align || "left") === a ? true : null }, a[0].toUpperCase() + a.slice(1)))))))
+            h("label", { class: "field" }, h("span", {}, "Text size"), h("select", { onchange: (e) => { it.fontSize = e.target.value ? Number(e.target.value) : undefined; markDirty(); drawBoxes({ side: false }) } },
+              h("option", { value: "" }, "Auto (fill the box)"), [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36].map((n) => h("option", { value: n, selected: it.fontSize === n ? true : null }, `${n} pt`)))),
+            h("label", { class: "field" }, h("span", {}, "Align"), h("select", { onchange: (e) => { it.align = e.target.value; markDirty(); drawBoxes({ side: false }) } },
+              ["left", "center", "right"].map((a) => h("option", { value: a, selected: (it.align || "left") === a ? true : null }, a[0].toUpperCase() + a.slice(1))))),
+            h("label", { class: "field" }, h("span", {}, "Font"), h("select", { onchange: (e) => { it.font = e.target.value === "sans" ? undefined : e.target.value; markDirty(); drawBoxes({ side: false }) } },
+              [["sans", "Sans (Helvetica)"], ["serif", "Serif (Times)"], ["mono", "Mono (Courier)"]].map(([k, l]) => h("option", { value: k, selected: (it.font || "sans") === k ? true : null }, l)))),
+            h("div", { class: "field" }, h("span", { class: "flabel" }, "Text colour"),
+              h("div", { class: "row", style: "gap:6px" },
+                h("input", { type: "color", class: "color-in", value: it.color || "#0d0d1f", "aria-label": "Text colour", oninput: (e) => { it.color = e.target.value; markDirty(); drawBoxes({ side: false }) } }),
+                h("button", { class: "btn small", title: "Use the colour of the text printed here on the form", onclick: () => { const { ink } = sampleColors(it); if (ink) { it.color = ink; markDirty(); drawBoxes() } else toast("No text found under this box to match") } }, "Match"))),
+            h("label", { class: "check full" }, h("input", { type: "checkbox", checked: it.bold, onchange: (e) => { it.bold = e.target.checked || undefined; markDirty(); drawBoxes({ side: false }) } }), "Bold")))
         }
       }
       // Example value for this box
@@ -1737,13 +1758,15 @@
     window.addEventListener("hashchange", () => document.removeEventListener("keydown", onKey), { once: true })
 
     // ---- Erasing what's printed under boxes ----
-    // Picks the page's background colour around a box (the most common colour
-    // along its edges and inside it), so the cover blends in on shaded areas.
-    function sampleColor(it) {
+    // Reads the page under a box: the background colour (most common colour) and
+    // the text colour (most common colour clearly different from it), so the
+    // cover blends in and the new text looks like the text it replaces.
+    function sampleColors(it) {
+      const fallback = { bg: "#ffffff", ink: null }
       try {
         const pe = pageEls[it.page]
         const c = pe && pe.canvas
-        if (!c || !c.width) return "#ffffff"
+        if (!c || !c.width) return fallback
         const k = c.width / m.pages[it.page].width
         const x0 = Math.max(0, Math.floor(it.x * k))
         const y0 = Math.max(0, Math.floor(it.y * k))
@@ -1751,7 +1774,7 @@
         const hh = Math.max(1, Math.min(c.height - y0, Math.ceil(it.h * k)))
         const data = c.getContext("2d").getImageData(x0, y0, w, hh).data
         const buckets = new Map()
-        const step = Math.max(1, Math.floor(Math.sqrt((w * hh) / 4000)))
+        const step = Math.max(1, Math.floor(Math.sqrt((w * hh) / 6000)))
         for (let yy = 0; yy < hh; yy += step) {
           for (let xx = 0; xx < w; xx += step) {
             const i = (yy * w + xx) * 4
@@ -1761,13 +1784,38 @@
             buckets.set(key, b)
           }
         }
-        let best = null
-        for (const b of buckets.values()) if (!best || b.n > best.n) best = b
-        const hex = (n) => Math.round(n / best.n).toString(16).padStart(2, "0")
-        return best ? `#${hex(best.r)}${hex(best.g)}${hex(best.b)}` : "#ffffff"
+        const avg = (b) => [b.r / b.n, b.g / b.n, b.b / b.n]
+        const hex = (rgbv) => `#${rgbv.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`
+        const list = [...buckets.values()].sort((a, b) => b.n - a.n)
+        const bg = avg(list[0])
+        const dist = (a) => Math.hypot(a[0] - bg[0], a[1] - bg[1], a[2] - bg[2])
+        const inkBucket = list.slice(1).find((b) => b.n >= 3 && dist(avg(b)) > 110)
+        return { bg: hex(bg), ink: inkBucket ? hex(avg(inkBucket)) : null }
       } catch {
-        return "#ffffff"
+        return fallback
       }
+    }
+    const sampleColor = (it) => sampleColors(it).bg
+
+    // The erased area reaches a little past the box, most of all downwards,
+    // so the tails of old letters (g, j, p, y) below the drawn box go too.
+    function eraseRect(it, y = it.y) {
+      const pg = m.pages[it.page]
+      const x = Math.max(0, it.x - 1.5)
+      const top = Math.max(0, y - 1.5)
+      const w = Math.min(pg.width - x, it.w + 3)
+      const hh = Math.min(pg.height - top, it.h + 3 + it.h * 0.22)
+      return { x, y: top, w, h: hh }
+    }
+
+    function applyNewBoxDefaults(item) {
+      if (!eraseByDefault) return
+      const { bg, ink } = sampleColors(item)
+      item.erase = true
+      item.eraseColor = bg
+      const isText = !(item.kind === "system" && ["qr", "org.logo", "preparedBy.signature", "approvedBy.signature"].includes(item.key)) &&
+        !(item.kind === "field" && ["checkbox", "image"].includes((fieldOf(item.key) || {}).type))
+      if (isText && ink) item.color = ink
     }
 
     function eraseAreas() {
@@ -1782,9 +1830,10 @@
           for (let r = 0; r < rows; r++) {
             const y = it.y + r * rh
             if (y + it.h > m.pages[it.page].height + 0.5) break
-            areas.push({ page: it.page, x: it.x, y, w: it.w, h: it.h, color })
+            // Table cells: stay inside the row so ruled lines survive.
+            areas.push({ page: it.page, x: it.x + 1, y: y + 1, w: it.w - 2, h: it.h - 2, color })
           }
-        } else areas.push({ page: it.page, x: it.x, y: it.y, w: it.w, h: it.h, color })
+        } else areas.push({ page: it.page, ...eraseRect(it), color })
       }
       return areas
     }

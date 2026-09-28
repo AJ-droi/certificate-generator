@@ -493,3 +493,42 @@ test("PDF template: an erased copy keeps a link to the original upload", async (
   })
   assert.equal(bogus.data.version.layout.originalSourceHash, undefined)
 })
+
+test("PDF template: text style per box, and drafts follow template changes", async () => {
+  const up = await uploadPdf(pdfAdmin, await makeSampleForm())
+  const schema = [{ key: "client", label: "Client", type: "text" }]
+  const item = { kind: "field", key: "client", page: 0, x: 380, y: 120, w: 185, h: 20, font: "serif", bold: true, color: "#1A2B3C" }
+  const t = await pdfAdmin("POST", "/api/templates", { name: "Styled", kind: "pdf", sourceHash: up.data.sourceHash, schema, layout: { items: [item] } })
+  assert.equal(t.status, 201, JSON.stringify(t.data))
+  const saved = t.data.version.layout.items[0]
+  assert.deepEqual([saved.font, saved.bold, saved.color], ["serif", true, "#1a2b3c"])
+
+  const d = (await pdfAdmin("POST", "/api/documents", { templateId: t.data.template.id, data: { client: "Styled Ltd" } })).data.document
+  const draftVersion = d.templateVersionId
+
+  // The admin changes the template: a new field.
+  const v2 = await pdfAdmin("POST", `/api/templates/${t.data.template.id}/versions`, {
+    kind: "pdf", sourceHash: up.data.sourceHash,
+    schema: [...schema, { key: "site", label: "Site", type: "text" }],
+    layout: { items: [item, { kind: "field", key: "site", page: 0, x: 30, y: 160, w: 300, h: 16 }] },
+  })
+  assert.equal(v2.status, 201)
+  // The open draft shows the new field straight away and moves to v2 on save.
+  const view = await pdfAdmin("GET", `/api/documents/${d.id}`)
+  assert.ok(view.data.version.schema.some((f) => f.key === "site"))
+  const saved2 = await pdfAdmin("PATCH", `/api/documents/${d.id}`, { data: { client: "Styled Ltd", site: "Onne" } })
+  assert.equal(saved2.status, 200, JSON.stringify(saved2.data))
+  assert.notEqual(saved2.data.document.templateVersionId, draftVersion)
+  assert.equal(saved2.data.document.templateVersionId, v2.data.version.id)
+  assert.equal(saved2.data.document.data.site, "Onne")
+
+  const issued = await pdfAdmin("POST", `/api/documents/${d.id}/approve`, {})
+  assert.equal(issued.status, 200, JSON.stringify(issued.data))
+  const text = (await pdfText((await pdfAdmin("GET", `/api/documents/${d.id}/pdf`)).data)).join(" ")
+  assert.match(text, /Styled Ltd/)
+  assert.match(text, /Onne/)
+  const { PDFDocument } = require("pdf-lib")
+  const out = await PDFDocument.load((await pdfAdmin("GET", `/api/documents/${d.id}/pdf`)).data)
+  const fonts = [...out.context.enumerateIndirectObjects()].map(([, o]) => o && o.get && o.get(require("pdf-lib").PDFName.of("BaseFont"))).filter(Boolean).map(String)
+  assert.ok(fonts.some((f) => /Times-Bold/.test(f)), `expected Times-Bold, got ${fonts}`)
+})
