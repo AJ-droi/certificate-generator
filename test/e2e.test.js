@@ -416,6 +416,7 @@ test("PDF template: issuing prints data onto the original pages, extra rows cont
   const draftPdf = await anon("GET", draftPreview.data.previewUrl)
   const draftText = (await pdfText(draftPdf.data)).join(" ")
   assert.match(draftText, /DRAFT/)
+  assert.match(draftText, /Awaiting approval/, "drafts say the approval is pending")
 
   const issued = await pdfAdmin("POST", `/api/documents/${d.id}/approve`, {})
   assert.equal(issued.status, 200, JSON.stringify(issued.data))
@@ -431,6 +432,8 @@ test("PDF template: issuing prints data onto the original pages, extra rows cont
   assert.match(pages[1], /Zenith Offshore Ltd/, "header fields repeat on continuation pages")
   assert.match(pages[0], /PRESSURE TEST CERTIFICATE/, "the original form is underneath")
   assert.doesNotMatch(pages.join(" "), /DRAFT/)
+  assert.doesNotMatch(pages.join(" "), /Awaiting approval/)
+  assert.match(pages[0], /Pam/, "approver's name printed once approved")
   const code = issued.data.document.publicId.match(/.{4}/g).join("-")
   assert.ok(pages[0].includes(code), "verification code printed")
 
@@ -469,4 +472,24 @@ test("PDF template: fillable fields are flattened, and the stored form can't be 
 
   // Other companies can't read this company's uploaded form.
   assert.equal((await other("GET", `/api/templates/pdf-source/${up.data.sourceHash}`)).status, 404)
+})
+
+test("PDF template: an erased copy keeps a link to the original upload", async () => {
+  const original = await uploadPdf(pdfAdmin, await makeSampleForm())
+  const cleaned = await uploadPdf(pdfAdmin, await makeSampleForm({ fillable: true })) // stands in for the erased copy
+  const schema = [{ key: "client", label: "Client", type: "text" }]
+  const items = [{ kind: "field", key: "client", page: 0, x: 380, y: 125, w: 185, h: 13, erase: true, eraseColor: "#FFFFFF" }]
+  const t = await pdfAdmin("POST", "/api/templates", {
+    name: "Erased", kind: "pdf", sourceHash: cleaned.data.sourceHash, schema,
+    layout: { items, originalSourceHash: original.data.sourceHash },
+  })
+  assert.equal(t.status, 201, JSON.stringify(t.data))
+  assert.equal(t.data.version.layout.originalSourceHash, original.data.sourceHash)
+  assert.equal(t.data.version.layout.items[0].erase, true)
+  assert.equal(t.data.version.layout.items[0].eraseColor, "#ffffff")
+  // An original that was never uploaded is dropped.
+  const bogus = await pdfAdmin("POST", `/api/templates/${t.data.template.id}/versions`, {
+    kind: "pdf", sourceHash: cleaned.data.sourceHash, schema, layout: { items, originalSourceHash: "a".repeat(64) },
+  })
+  assert.equal(bogus.data.version.layout.originalSourceHash, undefined)
 })

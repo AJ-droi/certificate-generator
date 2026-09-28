@@ -197,6 +197,12 @@ function validateLayout(layout, schema, pages) {
       if (num(fs) && fs >= 4 && fs <= 72) item.fontSize = fs
     }
     if (["left", "center", "right"].includes(raw.align)) item.align = raw.align
+    // "Erase what's printed underneath": applied by the editor, which uploads a
+    // cleaned copy of the form. Kept here so the editor can redo it later.
+    if (raw.erase === true) {
+      item.erase = true
+      if (/^#[0-9a-f]{6}$/i.test(String(raw.eraseColor || ""))) item.eraseColor = raw.eraseColor.toLowerCase()
+    }
 
     if (item.kind === "field") {
       const f = fields.get(raw.key)
@@ -296,7 +302,7 @@ function wrapLines(font, text, size, width) {
   return lines
 }
 
-function drawTextBox(page, g, font, box, text, { multiline = false, fontSize, align = "left" } = {}) {
+function drawTextBox(page, g, font, box, text, { multiline = false, fontSize, align = "left", color = rgb(0.05, 0.05, 0.12) } = {}) {
   const value = sanitizeText(font, text).trim()
   if (!value) return
   const pad = Math.min(2, box.w * 0.05)
@@ -329,7 +335,7 @@ function drawTextBox(page, g, font, box, text, { multiline = false, fontSize, al
     else if (align === "right") X = box.x + box.w - pad - w
     const baseline = top + size * 0.93
     const p = toUser(g, X, baseline)
-    page.drawText(line, { x: p.x, y: p.y, size, font, color: rgb(0.05, 0.05, 0.12), rotate: degrees(g.rotation) })
+    page.drawText(line, { x: p.x, y: p.y, size, font, color, rotate: degrees(g.rotation) })
     top += lineH
   }
 }
@@ -494,6 +500,9 @@ async function renderOverlay({ source, layout, schema, context, stamp, toPng }) 
         } else if (def.type === "image") {
           const img = await image(systemValue(item.key, context))
           if (img) await drawImageBox(page, g, img, box)
+        } else if (item.key === "approvedBy.name" && !context.approvedBy) {
+          // Not approved yet: say so where the approver's name will go.
+          drawTextBox(page, g, font, box, "Awaiting approval", { ...opts, color: rgb(0.45, 0.47, 0.5) })
         } else {
           const raw = systemValue(item.key, context)
           drawTextBox(page, g, font, box, def.type === "date" ? formatDateValue(raw) : raw || "", opts)

@@ -38,6 +38,8 @@ function createApp() {
   for (const dir of ["build", "wasm", "standard_fonts", "cmaps"]) {
     app.use(`/vendor/pdfjs/${dir}`, express.static(path.join(pdfjs, dir), { maxAge: "7d", index: false }))
   }
+  // pdf-lib in the browser: the PDF editor uses it to build a cleaned copy of a form.
+  app.use("/vendor/pdf-lib", express.static(path.join(path.dirname(require.resolve("pdf-lib/package.json")), "dist"), { maxAge: "7d", index: false }))
   app.use("/images", express.static(path.join(__dirname, "..", "public", "images"), { maxAge: "1h" }))
   app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "..", "public", "app.html")))
   app.get("/healthz", (req, res) => res.json({ ok: true }))

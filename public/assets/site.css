@@ -358,3 +358,21 @@ dialog form > * + * { margin-top: 14px; }
 dialog .pdf-scroll { position: relative; inset: auto; border-radius: 8px; }
 .pdf-scroll .pdf-canvas { display: block; flex: none; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); }
 dialog.wide { width: min(1000px, 95vw); }
+
+/* Example values inside boxes; the name tag moves above the box. */
+.pbox-value {
+  position: absolute; inset: 0 2px; display: flex; align-items: center; overflow: hidden; white-space: nowrap;
+  font-family: Helvetica, Arial, sans-serif; color: #10121f; line-height: 1.1; pointer-events: none;
+}
+.pbox-value.multi { align-items: flex-start; white-space: pre-wrap; overflow-wrap: anywhere; padding-top: 1px; }
+.pghost .pbox-value { color: #10121f; }
+.pbox.has-value .pbox-label {
+  top: auto; bottom: 100%; left: -1.5px; right: auto; max-width: 220px; padding: 0 4px; border-radius: 3px 3px 0 0;
+  background: #2563eb; color: #fff; font-size: 8.5px; line-height: 13px; opacity: 0; transition: opacity 0.1s;
+}
+.pbox.k-system.has-value .pbox-label { background: #b45309; }
+.pbox.k-column.has-value .pbox-label { background: #0f766e; }
+.pbox.has-value:hover .pbox-label, .pbox.has-value.sel .pbox-label { opacity: 1; }
+.pbox.erasing { border-style: dashed; }
+.erase-box { border-top: 1px solid var(--line); padding-top: 10px; }
+.color-in { width: 44px; min-height: 30px; height: 30px; padding: 2px; cursor: pointer; }

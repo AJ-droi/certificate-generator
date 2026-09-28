@@ -57,7 +57,11 @@ Dashboard → Templates → Add template → **Upload your PDF form**.
 1. Upload a blank copy of the form (up to 15 MB, 30 pages). Password-protected PDFs are rejected. If the PDF has fillable fields, the editor offers to add them automatically.
 2. **Drag a box** where a value should be printed and choose what goes there: a new field (text, long text, number, date, dropdown, tick box, image), a field that already exists, something filled in automatically (QR code, document number, verification code, issue date, company name/logo, prepared-by / approved-by name, qualification, signature, date), or a **table column**.
 3. For tables, draw the box on the **first row** of each column. Set the row spacing and rows per page so the dashed guide boxes line up with the rows on the form. Extra rows continue on a copy of the page (header fields repeat).
-4. Drag boxes to move them, drag the corner to resize, use arrow keys to nudge (Shift for bigger steps), Delete to remove. **Preview** fills every box with example values.
+4. Drag boxes to move them, drag the corner to resize, use arrow keys to nudge (Shift for bigger steps), Delete to remove.
+5. Type an **example value** for a box (or use *Edit example values* for everything, including table rows). It shows in the box right away and in **Preview**. These are only for checking the layout; real values are entered on each document.
+6. **Only have a filled-in copy of the form?** Upload it, draw boxes over the old information and tick **Erase what's printed under this box**. The cover colour is matched to the page automatically. On save, the editor makes a cleaned copy of the form: pages with erased areas are redrawn at 216 dpi with the old text removed (not just hidden), other pages stay as they are. The original upload is kept so you can change the erased areas later.
+
+Drafts print "Awaiting approval" in the approver's name box. When an approver approves the document, their name, qualification, signature and the date are printed there.
 
 How it stays secure:
 - The uploaded form is stored under its SHA-256 fingerprint. The fingerprint and box layout are part of each template version's hash, which is signed into every issued document. If the stored form is swapped, rendering refuses.

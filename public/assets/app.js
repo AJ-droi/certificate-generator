@@ -120,10 +120,10 @@
     })
   }
 
-  function modal(title, bodyNodes, { submitLabel = "OK", danger = false, cancel = true } = {}) {
+  function modal(title, bodyNodes, { submitLabel = "OK", danger = false, cancel = true, wide = false } = {}) {
     return new Promise((resolve) => {
       const err = h("div")
-      const dlg = h("dialog")
+      const dlg = h("dialog", { class: wide ? "wide" : null })
       const form = h(
         "form",
         { method: "dialog" },
@@ -1104,9 +1104,14 @@
       items: JSON.parse(JSON.stringify(v ? v.layout.items : [])),
       tables: JSON.parse(JSON.stringify(v ? v.layout.tables || {} : {})),
       pages: v ? v.layout.pages : null,
+      // sourceHash: the form documents are printed on. originalHash: the PDF as
+      // uploaded. They differ when text was erased from the form.
       sourceHash: v ? v.sourceHash : null,
+      originalHash: v ? v.layout.originalSourceHash || v.sourceHash : null,
       settings: v ? { ...v.settings } : { numberPrefix: "", numberPadding: 4, sampleData: {} },
     }
+    if (!m.settings.sampleData || typeof m.settings.sampleData !== "object") m.settings.sampleData = {}
+    const sd = () => m.settings.sampleData
     let dirty = false
     let selected = null
     let placing = null // { kind, key?, table?, column?, label }
@@ -1118,6 +1123,7 @@
       if (n >= nextId) nextId = n + 1
     }
     const newId = () => `b${nextId++}`
+    let erasedSig = v && v.layout.originalSourceHash ? JSON.stringify(eraseAreas()) : ""
     const markDirty = () => { dirty = true }
     window.onbeforeunload = () => (dirty ? true : undefined)
 
@@ -1156,6 +1162,7 @@
           const data = await res.json()
           if (!res.ok) throw new ApiError(res.status, data)
           m.sourceHash = data.sourceHash
+          m.originalHash = data.sourceHash
           m.pages = data.pages
           if (!m.name) m.name = file.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim()
           markDirty()
@@ -1178,7 +1185,8 @@
             h("li", {}, "Use the original PDF from Word or your design software if you have it — it looks sharper than a scan."),
             h("li", {}, "Scans work too. Scan straight, at 300 dpi, on a clean blank form."),
             h("li", {}, "Leave a space for the QR code, e.g. in a corner of the header. You can place it anywhere."),
-            h("li", {}, "If the PDF has fillable fields, we'll find them for you."))),
+            h("li", {}, "If the PDF has fillable fields, we'll find them for you."),
+            h("li", {}, "Only have a filled-in copy? Upload it anyway — tick “Erase what's printed under this box” on each box to remove the old information."))),
         ),
       )
     }
@@ -1188,7 +1196,7 @@
     async function drawPages() {
       pagesHost.replaceChildren()
       pageEls.length = 0
-      if (!pdf) pdf = await openPdf(`/api/templates/pdf-source/${m.sourceHash}`)
+      if (!pdf) pdf = await openPdf(`/api/templates/pdf-source/${m.originalHash}`)
       const avail = Math.max(320, pagesHost.clientWidth - 8)
       const maxW = Math.max(...m.pages.map((p) => p.width))
       const scale = (avail / maxW) * zoom
@@ -1198,40 +1206,88 @@
         const wrap = h("div", { class: "pdf-page", style: `width:${m.pages[i].width * scale}px;height:${m.pages[i].height * scale}px` },
           canvas, overlay, h("div", { class: "pdf-page-no" }, `Page ${i + 1} of ${m.pages.length}`))
         pagesHost.append(wrap)
-        pageEls.push({ overlay, scale })
+        pageEls.push({ overlay, scale, canvas })
         if (!readOnly) attachDrawing(overlay, i)
         drawPdfPage(pdf, i, scale, canvas).catch((e) => toast(`Couldn't draw page ${i + 1}: ${e.message}`, true))
       }
       drawBoxes()
     }
 
+    // ---- Example values shown in the boxes ----
+    const fmtExample = (type, val) => {
+      if (val === undefined || val === null || val === "" || val === false) return ""
+      if (type === "checkbox") return "✓"
+      if (type === "image") return ""
+      if (type === "date") {
+        const mm = String(val).match(/^(\d{4})-(\d{2})-(\d{2})/)
+        return mm ? `${mm[3]}/${mm[2]}/${mm[1]}` : String(val)
+      }
+      return String(val)
+    }
+    function exampleFor(it, row = 0) {
+      const data = sd()
+      if (it.kind === "field") {
+        const f = fieldOf(it.key)
+        return f ? fmtExample(f.type, data[it.key]) : ""
+      }
+      if (it.kind === "column") {
+        const rows = Array.isArray(data[it.table]) ? data[it.table] : []
+        if (!rows[row]) return ""
+        if (it.column === "#") return String(row + 1)
+        const t = fieldOf(it.table)
+        const c = t && t.columns.find((x) => x.key === it.column)
+        return c ? fmtExample(c.type, rows[row][c.key]) : ""
+      }
+      const pad = Math.max(1, m.settings.numberPadding || 4)
+      return {
+        "document.no": `${m.settings.numberPrefix || ""}${"1".padStart(pad, "0")}`,
+        "approvedBy.name": "Awaiting approval",
+        "preparedBy.name": state.me.name,
+        "preparedBy.qualification": state.me.qualification || "",
+        "org.name": state.org.name,
+      }[it.key] || ""
+    }
+    const isMultiline = (it) => it.kind === "field" && (fieldOf(it.key) || {}).type === "textarea"
+    function valueEl(it, text, s) {
+      if (!text) return null
+      const size = Math.max(5, Math.min(it.fontSize || Math.min(11, it.h * 0.7), it.h * 0.85)) * s
+      return h("span", {
+        class: `pbox-value${isMultiline(it) ? " multi" : ""}`,
+        style: `font-size:${size}px;justify-content:${it.align === "center" ? "center" : it.align === "right" ? "flex-end" : "flex-start"}${text === "✓" ? ";justify-content:center" : ""}${it.kind === "system" && it.key === "approvedBy.name" ? ";color:#777" : ""}`,
+      }, text)
+    }
+
     // ---- Boxes ----
-    function drawBoxes() {
+    // `side: false` redraws only the page (keeps focus in the side panel while typing).
+    function drawBoxes({ side = true } = {}) {
       for (const { overlay } of pageEls) overlay.querySelectorAll(".pbox,.pghost").forEach((n) => n.remove())
       for (const it of m.items) {
         const pe = pageEls[it.page]
         if (!pe) continue
         const s = pe.scale
+        const value = exampleFor(it)
+        const cover = it.erase ? `;background:${it.eraseColor || "#ffffff"}` : ""
         const el = h("div", {
-          class: `pbox k-${it.kind}${selected === it.id ? " sel" : ""}`,
-          style: `left:${it.x * s}px;top:${it.y * s}px;width:${it.w * s}px;height:${it.h * s}px`,
+          class: `pbox k-${it.kind}${selected === it.id ? " sel" : ""}${value ? " has-value" : ""}${it.erase ? " erasing" : ""}`,
+          style: `left:${it.x * s}px;top:${it.y * s}px;width:${it.w * s}px;height:${it.h * s}px${cover}`,
           title: itemLabel(it),
           "data-id": it.id,
-        }, h("span", { class: "pbox-label" }, itemLabel(it)), readOnly ? null : h("span", { class: "pbox-handle", "aria-hidden": "true" }))
+        }, valueEl(it, value, s), h("span", { class: "pbox-label" }, itemLabel(it)), readOnly ? null : h("span", { class: "pbox-handle", "aria-hidden": "true" }))
         if (!readOnly) attachBox(el, it)
         pe.overlay.append(el)
-        // Show where the following table rows will go.
+        // Show where the following table rows will go, with example rows filled in.
         if (it.kind === "column") {
           const t = m.tables[it.table] || {}
           const rh = t.rowHeight || it.h
           const rows = Math.min(t.rowsPerPage || 1, 60)
           for (let r = 1; r < rows; r++) {
             if ((it.y + r * rh + it.h) > m.pages[it.page].height) break
-            pe.overlay.append(h("div", { class: "pghost", style: `left:${it.x * s}px;top:${(it.y + r * rh) * s}px;width:${it.w * s}px;height:${it.h * s}px` }))
+            pe.overlay.append(h("div", { class: "pghost", style: `left:${it.x * s}px;top:${(it.y + r * rh) * s}px;width:${it.w * s}px;height:${it.h * s}px${cover}` },
+              valueEl(it, exampleFor(it, r), s)))
           }
         }
       }
-      drawSide()
+      if (side) drawSide()
     }
 
     const toPt = (overlay, e) => {
@@ -1455,7 +1511,9 @@
       if (!readOnly) {
         parts.push(h("div", { class: "card pdf-hint" }, placing
           ? [h("strong", {}, `Placing: ${placing.label}`), h("p", { class: "muted", style: "margin:4px 0 8px" }, "Click on the page, or drag to draw the box."), h("button", { class: "btn small", onclick: () => { placing = null; drawSide() } }, "Cancel")]
-          : [h("strong", {}, "Drag on the page to add a box"), h("p", { class: "muted", style: "margin:4px 0 0" }, "Draw where the information should be printed, then say what goes there. Drag boxes to move them; drag the corner to resize.")]))
+          : [h("strong", {}, "Drag on the page to add a box"),
+            h("p", { class: "muted", style: "margin:4px 0 0" }, "Draw where the information should be printed, then say what goes there. Drag boxes to move them; drag the corner to resize."),
+            h("p", { class: "muted", style: "margin:8px 0 0;font-size:.85rem" }, "Values you type here are only examples to check the layout. Your team enters the real values on each document (Documents → New document), then sends it for approval.")]))
       }
 
       if (sel && !readOnly) parts.push(propsPanel(sel))
@@ -1484,6 +1542,13 @@
       })
       parts.push(h("div", { class: "card" }, h("h3", {}, `Fields (${m.schema.length})`),
         m.schema.length ? h("div", { class: "fl-list" }, fieldRows) : h("p", { class: "muted" }, "None yet. Draw a box on the page to add one.")))
+
+      // Example values
+      if (!readOnly && m.schema.length) {
+        parts.push(h("div", { class: "card" }, h("h3", {}, "Example values"),
+          h("p", { class: "muted", style: "font-size:.85rem" }, "Shown in the boxes and in Preview, and offered as “Fill with sample data” on new documents."),
+          h("button", { class: "btn small", onclick: editExamples }, "Edit example values")))
+      }
 
       // System items
       parts.push(h("div", { class: "card" }, h("h3", {}, "Filled in automatically"),
@@ -1576,6 +1641,58 @@
               ["left", "center", "right"].map((a) => h("option", { value: a, selected: (it.align || "left") === a ? true : null }, a[0].toUpperCase() + a.slice(1)))))))
         }
       }
+      // Example value for this box
+      const exampleInput = (type, options, get, set) => {
+        const onValue = (val) => { set(val); markDirty(); drawBoxes({ side: false }) }
+        let input
+        if (type === "checkbox") {
+          return h("label", { class: "check" }, h("input", { type: "checkbox", checked: Boolean(get()), onchange: (e) => onValue(e.target.checked) }), "Example: ticked")
+        } else if (type === "select") {
+          input = h("select", { onchange: (e) => onValue(e.target.value) }, h("option", { value: "" }, "—"), (options || []).map((o) => h("option", { value: o, selected: o === get() ? true : null }, o)))
+        } else if (type === "textarea") {
+          input = h("textarea", { rows: 2, value: get() || "", oninput: (e) => onValue(e.target.value) })
+        } else {
+          input = h("input", { type: type === "number" ? "number" : type === "date" ? "date" : "text", value: get() ?? "", oninput: (e) => onValue(e.target.value) })
+        }
+        return h("label", { class: "field" }, h("span", {}, "Example value"), input)
+      }
+      if (it.kind === "field") {
+        const f = fieldOf(it.key)
+        if (f && f.type !== "image") rows.push(exampleInput(f.type, f.options, () => sd()[f.key], (val) => { sd()[f.key] = val }))
+      }
+      if (it.kind === "column" && it.column !== "#") {
+        const t = fieldOf(it.table)
+        const c = t && t.columns.find((x) => x.key === it.column)
+        if (c) {
+          rows.push(exampleInput(c.type, c.options, () => ((sd()[t.key] || [])[0] || {})[c.key], (val) => {
+            if (!Array.isArray(sd()[t.key]) || !sd()[t.key].length) sd()[t.key] = [{}]
+            sd()[t.key][0][c.key] = val
+          }))
+        }
+      }
+      if (it.kind === "system" && it.key.startsWith("approvedBy.")) {
+        rows.push(h("p", { class: "muted", style: "font-size:.82rem;margin:0" }, "Filled in when an approver approves the document. Until then drafts show “Awaiting approval” here."))
+      } else if (it.kind === "system" && it.key.startsWith("preparedBy.")) {
+        rows.push(h("p", { class: "muted", style: "font-size:.82rem;margin:0" }, "Filled in from the profile of the person who prepares the document (Settings → Your profile)."))
+      }
+
+      // Erase what's printed underneath
+      rows.push(h("div", { class: "erase-box" },
+        h("label", { class: "check" }, h("input", { type: "checkbox", checked: it.erase, onchange: (e) => {
+          it.erase = e.target.checked
+          if (it.erase && !it.eraseColor) it.eraseColor = sampleColor(it)
+          markDirty()
+          drawBoxes()
+        } }), "Erase what's printed under this box"),
+        it.erase
+          ? h("div", { class: "row", style: "margin-top:6px" },
+              h("input", { type: "color", value: it.eraseColor || "#ffffff", "aria-label": "Cover colour", class: "color-in", oninput: (e) => { it.eraseColor = e.target.value; markDirty(); drawBoxes({ side: false }) } }),
+              h("button", { class: "btn small", onclick: () => { it.eraseColor = sampleColor(it); markDirty(); drawBoxes() } }, "Match the page colour"))
+          : null,
+        h("p", { class: "muted", style: "font-size:.8rem;margin:6px 0 0" }, it.kind === "column"
+          ? "Clears this column in every row. Use it when your PDF already has old information here — it's removed from the form, not just hidden."
+          : "Use it when your PDF already has old information here — it's removed from the form, not just hidden.")))
+
       rows.push(h("div", { class: "row" },
         h("button", { class: "btn small danger", onclick: del }, "Remove box"),
         it.kind === "field" ? h("button", { class: "btn small ghost", onclick: () => {
@@ -1619,11 +1736,144 @@
     document.addEventListener("keydown", onKey)
     window.addEventListener("hashchange", () => document.removeEventListener("keydown", onKey), { once: true })
 
+    // ---- Erasing what's printed under boxes ----
+    // Picks the page's background colour around a box (the most common colour
+    // along its edges and inside it), so the cover blends in on shaded areas.
+    function sampleColor(it) {
+      try {
+        const pe = pageEls[it.page]
+        const c = pe && pe.canvas
+        if (!c || !c.width) return "#ffffff"
+        const k = c.width / m.pages[it.page].width
+        const x0 = Math.max(0, Math.floor(it.x * k))
+        const y0 = Math.max(0, Math.floor(it.y * k))
+        const w = Math.max(1, Math.min(c.width - x0, Math.ceil(it.w * k)))
+        const hh = Math.max(1, Math.min(c.height - y0, Math.ceil(it.h * k)))
+        const data = c.getContext("2d").getImageData(x0, y0, w, hh).data
+        const buckets = new Map()
+        const step = Math.max(1, Math.floor(Math.sqrt((w * hh) / 4000)))
+        for (let yy = 0; yy < hh; yy += step) {
+          for (let xx = 0; xx < w; xx += step) {
+            const i = (yy * w + xx) * 4
+            const key = ((data[i] >> 4) << 8) | ((data[i + 1] >> 4) << 4) | (data[i + 2] >> 4)
+            const b = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 }
+            b.n++; b.r += data[i]; b.g += data[i + 1]; b.b += data[i + 2]
+            buckets.set(key, b)
+          }
+        }
+        let best = null
+        for (const b of buckets.values()) if (!best || b.n > best.n) best = b
+        const hex = (n) => Math.round(n / best.n).toString(16).padStart(2, "0")
+        return best ? `#${hex(best.r)}${hex(best.g)}${hex(best.b)}` : "#ffffff"
+      } catch {
+        return "#ffffff"
+      }
+    }
+
+    function eraseAreas() {
+      const areas = []
+      for (const it of m.items) {
+        if (!it.erase) continue
+        const color = it.eraseColor || "#ffffff"
+        if (it.kind === "column") {
+          const t = m.tables[it.table] || {}
+          const rh = t.rowHeight || it.h
+          const rows = Math.max(1, t.rowsPerPage || 1)
+          for (let r = 0; r < rows; r++) {
+            const y = it.y + r * rh
+            if (y + it.h > m.pages[it.page].height + 0.5) break
+            areas.push({ page: it.page, x: it.x, y, w: it.w, h: it.h, color })
+          }
+        } else areas.push({ page: it.page, x: it.x, y: it.y, w: it.w, h: it.h, color })
+      }
+      return areas
+    }
+
+    async function loadPdfLib() {
+      if (window.PDFLib) return window.PDFLib
+      await new Promise((resolve, reject) => {
+        const tag = document.createElement("script")
+        tag.src = "/vendor/pdf-lib/pdf-lib.min.js"
+        tag.onload = resolve
+        tag.onerror = () => reject(new Error("Couldn't load the PDF tools"))
+        document.head.append(tag)
+      })
+      return window.PDFLib
+    }
+
+    // Builds a copy of the uploaded form with the erase areas painted out, and
+    // uploads it as the form documents are printed on. Pages without erase
+    // areas are copied as they are; pages with them are redrawn as an image
+    // (216 dpi), so the old text is really gone rather than hidden.
+    async function ensureCleanSource() {
+      const areas = eraseAreas()
+      const sig = JSON.stringify(areas)
+      if (!areas.length) {
+        m.sourceHash = m.originalHash
+        erasedSig = ""
+        return
+      }
+      if (sig === erasedSig && m.sourceHash && m.sourceHash !== m.originalHash) return
+      const PDFLib = await loadPdfLib()
+      const origBytes = await (await fetch(`/api/templates/pdf-source/${m.originalHash}`, { credentials: "same-origin" })).arrayBuffer()
+      const src = await PDFLib.PDFDocument.load(origBytes)
+      const out = await PDFLib.PDFDocument.create()
+      if (!pdf) pdf = await openPdf(`/api/templates/pdf-source/${m.originalHash}`)
+      const K = 3
+      for (let i = 0; i < m.pages.length; i++) {
+        const mine = areas.filter((a) => a.page === i)
+        if (!mine.length) {
+          const [copied] = await out.copyPages(src, [i])
+          out.addPage(copied)
+          continue
+        }
+        const page = await pdf.getPage(i + 1)
+        const vp = page.getViewport({ scale: K })
+        const canvas = document.createElement("canvas")
+        canvas.width = Math.round(vp.width)
+        canvas.height = Math.round(vp.height)
+        const ctx = canvas.getContext("2d")
+        ctx.fillStyle = "#ffffff"
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        await page.render({ canvasContext: ctx, viewport: vp }).promise
+        for (const a of mine) {
+          ctx.fillStyle = a.color
+          ctx.fillRect(a.x * K - 1, a.y * K - 1, a.w * K + 2, a.h * K + 2)
+        }
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"))
+        const img = await out.embedPng(await blob.arrayBuffer())
+        const pg = out.addPage([m.pages[i].width, m.pages[i].height])
+        pg.drawImage(img, { x: 0, y: 0, width: m.pages[i].width, height: m.pages[i].height })
+      }
+      const bytes = await out.save()
+      const res = await fetch("/api/templates/pdf-source", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/pdf" }, body: bytes })
+      const data = await res.json()
+      if (!res.ok) throw new ApiError(res.status, data)
+      m.sourceHash = data.sourceHash
+      erasedSig = sig
+    }
+
+    const layoutBody = () => ({
+      items: m.items,
+      tables: m.tables,
+      originalSourceHash: m.sourceHash !== m.originalHash ? m.originalHash : undefined,
+    })
+
+    async function editExamples() {
+      const form = buildForm(m.schema, sd())
+      const ok = await modal("Example values", [h("p", { class: "muted" }, "Used to check the layout, in Preview, and for “Fill with sample data” on new documents. Real values are entered on each document."), form.el], { submitLabel: "Use these values", wide: true })
+      if (!ok) return
+      m.settings.sampleData = form.values()
+      markDirty()
+      drawBoxes()
+    }
+
     // ---- Preview & save ----
     async function preview(btn) {
       await busy(btn, async () => {
+        await ensureCleanSource()
         const r = await api("POST", "/api/templates/preview", {
-          kind: "pdf", sourceHash: m.sourceHash, schema: m.schema, layout: { items: m.items, tables: m.tables },
+          kind: "pdf", sourceHash: m.sourceHash, schema: m.schema, layout: layoutBody(),
           data: placeholderData(m.schema, m.settings.sampleData || {}),
         })
         const host = h("div", { class: "pdf-scroll", style: "height:70vh" })
@@ -1645,7 +1895,8 @@
           const ok = await modal("No QR code on the page", [h("p", {}, "Partners scan the QR code to verify a document. Save without it?")], { submitLabel: "Save anyway" })
           if (!ok) return
         }
-        const body = { kind: "pdf", sourceHash: m.sourceHash, schema: m.schema, layout: { items: m.items, tables: m.tables }, settings: m.settings }
+        await ensureCleanSource()
+        const body = { kind: "pdf", sourceHash: m.sourceHash, schema: m.schema, layout: layoutBody(), settings: m.settings }
         let r
         if (!id) {
           r = await api("POST", "/api/templates", { name: m.name, description: m.description, ...body })

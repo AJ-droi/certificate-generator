@@ -51,6 +51,12 @@ async function prepareVersion({ kind = "html", html, schema, settings, sourceHas
     if (sha256(source) !== sourceHash) throw badRequest("The stored PDF doesn't match its fingerprint. Upload it again.")
     const info = await inspectSourcePdf(source)
     const cleanLayout = { pages: info.pages, ...validateLayout(layout, cleanSchema, info.pages) }
+    // When text was erased from the form, `sourceHash` is the cleaned copy and
+    // this is the PDF as uploaded, so the editor can redo the erasing later.
+    const original = layout && layout.originalSourceHash
+    if (original && original !== sourceHash && /^[a-f0-9]{64}$/.test(String(original)) && (await storage.hasTemplateSource(organizationId, original))) {
+      cleanLayout.originalSourceHash = original
+    }
     return {
       kind: "pdf",
       html: "",
