@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @page { size: A4; margin: 0; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 9px; line-height: 1.25; color: #000; background: #fff; }
+      .page { width: 210mm; height: 297mm; margin: 0 auto; padding: 6mm; }
+      .page-break { page-break-after: always; }
+      .frame { border: 1px solid #000; height: 100%; padding: 8px; display: flex; flex-direction: column; }
+      .head { display: flex; align-items: center; gap: 8px; }
+      .logo { width: 64px; flex: none; }
+      .logo img { width: 64px; height: 64px; object-fit: contain; }
+      .logo-text { font-weight: bold; font-size: 10px; }
+      .title { flex: 1; text-align: center; }
+      .title h1 { font-size: 16px; margin: 0; }
+      .title p { font-size: 10px; font-weight: bold; margin: 2px 0 0; }
+      .qr { flex: none; display: flex; flex-direction: column; align-items: center; }
+      .qr-box { width: 64px; height: 64px; border: 1px solid #000; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 7px; }
+      .qr-box img { width: 100%; height: 100%; object-fit: contain; }
+      .qr-code { font-family: "Courier New", monospace; font-size: 6px; margin-top: 2px; }
+      .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; margin-top: 4px; }
+      .parties { display: flex; margin-top: 4px; border: 1px solid #000; }
+      .parties > div { padding: 2px 4px 8px; }
+      .parties > div + div { border-left: 1px solid #000; }
+      .grow { flex: 1; }
+      .value { font-weight: 600; white-space: pre-line; }
+      .legend p { margin: 0; font-weight: 600; }
+      table { border-collapse: collapse; }
+      .items { width: 100%; margin-top: 8px; font-size: 8px; }
+      .items th, .items td { border: 1px solid #000; padding: 2px; vertical-align: top; }
+      .items th { font-weight: bold; }
+      .items .desc { width: 35%; }
+      tr, td, th { page-break-inside: avoid; }
+      .reasons { display: flex; margin-top: 8px; border: 1px solid #000; font-size: 8px; }
+      .reasons > div { padding: 2px 24px 2px 4px; }
+      .reasons > div + div { border-left: 1px solid #000; }
+      .reasons .label { font-weight: 600; padding-right: 4px; }
+      .row2 { display: flex; justify-content: space-evenly; align-items: center; margin: 8px 0; }
+      .small td { border: 1px solid #000; padding: 2px 8px; font-size: 8px; }
+      .center { text-align: center; }
+      .sign { width: 80%; margin: 0 auto; text-align: center; }
+      .sign td { border: 1px solid #000; padding: 6px 4px; vertical-align: top; width: 50%; }
+      .sign .hdr td { font-weight: 600; font-size: 11px; padding: 4px; }
+      .sign .gap td { border: 0; height: 4px; padding: 0; }
+      .sign .name { font-weight: bold; font-size: 10px; margin-bottom: 4px; }
+      .sign img { height: 40px; max-width: 160px; object-fit: contain; display: block; margin: 0 auto; }
+      .sign .blank { height: 40px; }
+      .sign .date { font-size: 10px; font-weight: 600; margin-top: 4px; }
+      .sign p { margin: 2px 0 0; }
+      .pending { height: 64px; display: flex; align-items: center; justify-content: center; color: #666; }
+      .foot { margin-top: auto; padding-top: 8px; font-size: 7px; color: #555; display: flex; justify-content: space-between; }
+    </style>
+  </head>
+
+  <body>
+    {{#each (chunk items 10)}}
+    <div class="page {{#unless @last}}page-break{{/unless}}">
+      <div class="frame">
+        <div class="head">
+          <div class="logo">
+            {{#if @root.org.logo}}<img src="{{@root.org.logo}}" alt="{{@root.org.name}}" />
+            {{else}}<div class="logo-text">{{@root.org.name}}</div>{{/if}}
+          </div>
+          <div class="title">
+            <h1>Report Of Thorough Examination</h1>
+            <p>This report meets the requirements of schedule 1 of regulation 10 of LOLER 1998</p>
+          </div>
+          <div class="qr">
+            <div class="qr-box">
+              {{#if @root.qr}}<img src="{{@root.qr}}" alt="Verification QR code" />{{else}}QR code added when issued{{/if}}
+            </div>
+            {{#if @root.document.verificationCode}}<div class="qr-code">{{@root.document.verificationCode}}</div>{{/if}}
+          </div>
+        </div>
+
+        <div class="meta">
+          <div>Certificate No: <strong>{{@root.document.no}}</strong></div>
+          <div>Date of Examination: {{formatDate @root.examDate}}</div>
+          <div>Date of Report: {{formatDate @root.reportDate}}</div>
+          <div>Colour Code (if required): {{@root.colorCode}}</div>
+        </div>
+
+        <div class="parties">
+          <div class="grow">
+            Name &amp; Address of the employer for whom the examination was made:<br />
+            <span class="value">{{@root.employerName}}</span>
+          </div>
+          <div class="grow">
+            Address of the premises at which the examination was made:<br />
+            <span class="value">{{@root.premisesAddress}}</span>
+          </div>
+          <div class="legend">
+            Status:
+            <p>ND - No Defect</p>
+            <p>SDR - See Defect Report</p>
+            <p>NF - Not Found</p>
+            <p>OBS - Observation (see Defect Report)</p>
+          </div>
+        </div>
+
+        <table class="items">
+          <thead>
+            <tr>
+              <th>S/N</th>
+              <th>Identification Number</th>
+              <th class="desc">Description</th>
+              <th>WLL or SWL</th>
+              <th>Date of Last Thorough Examination</th>
+              <th>Date of Manufacture (if known)</th>
+              <th>Latest date of next thorough examination</th>
+              <th>Reason for Examination (See Below)</th>
+              <th>Details of any test</th>
+              <th>Status (See above)</th>
+              <th>Safe to Use Yes / No</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each this}}
+            <tr>
+              <td>{{inc (add (mul @../index 10) @index)}}</td>
+              <td>{{identificationNumber}}</td>
+              <td>{{description}}</td>
+              <td>{{wllOrSwl}}</td>
+              <td>{{lastThoroughExamDate}}</td>
+              <td>{{manufactureDate}}</td>
+              <td>{{nextThoroughExamDate}}</td>
+              <td>{{examinationReason}}</td>
+              <td>{{testDetails}}</td>
+              <td>{{status}}</td>
+              <td>{{safeToUse}}</td>
+            </tr>
+            {{/each}}
+          </tbody>
+        </table>
+
+        <div class="reasons">
+          <div class="label">Reason for Examination</div>
+          <div>Installation: <strong>A</strong> {{check @root.reasonInstallation}}</div>
+          <div>6 Monthly: <strong>B</strong> {{check @root.reasonSixMonthly}}</div>
+          <div>12 Monthly: <strong>C</strong> {{check @root.reasonTwelveMonthly}}</div>
+          <div>Written Scheme: <strong>D</strong> {{check @root.reasonWrittenScheme}}</div>
+          <div>Exceptional Circumstance: <strong>E</strong> {{check @root.reasonExceptional}}</div>
+        </div>
+
+        <div class="row2">
+          <table class="small">
+            <tr>
+              <td>Defect / Observation sheet attached?</td>
+              <td class="center">Yes</td>
+              <td class="center"><strong>{{#if @root.defectSheetAttached}}✓{{/if}}</strong></td>
+              <td class="center">No</td>
+              <td class="center"><strong>{{#unless @root.defectSheetAttached}}✓{{/unless}}</strong></td>
+            </tr>
+          </table>
+          <table class="small">
+            <tr>
+              <td><strong>Relevant standard</strong></td>
+              <td>{{@root.relevantStandard}}</td>
+            </tr>
+          </table>
+        </div>
+
+        <table class="sign">
+          <tr class="hdr">
+            <td>Inspector's Name/Qualification</td>
+            <td>Checked by Name/Qualification</td>
+          </tr>
+          <tr class="gap"><td colspan="2"></td></tr>
+          <tr>
+            <td>
+              <div class="name">{{@root.preparedBy.name}}</div>
+              {{#if @root.preparedBy.signature}}<img src="{{@root.preparedBy.signature}}" alt="Inspector signature" />{{else}}<div class="blank"></div>{{/if}}
+              <p>{{@root.preparedBy.qualification}}</p>
+            </td>
+            <td>
+              {{#if @root.approvedBy}}
+              <div class="name">{{@root.approvedBy.name}}</div>
+              {{#if @root.approvedBy.signature}}<img src="{{@root.approvedBy.signature}}" alt="Checker signature" />{{else}}<div class="blank"></div>{{/if}}
+              <div class="date">{{formatDate @root.approvedBy.date}}</div>
+              <p>{{@root.approvedBy.qualification}}</p>
+              {{else}}
+              <div class="pending">Awaiting approval</div>
+              {{/if}}
+            </td>
+          </tr>
+        </table>
+
+        <div class="foot">
+          <span>Page {{inc @index}} of {{length (chunk @root.items 10)}}</span>
+          {{#if @root.verifyUrl}}<span>Verify this report: {{@root.verifyUrl}}</span>{{/if}}
+        </div>
+      </div>
+    </div>
+    {{/each}}
+  </body>
+</html>

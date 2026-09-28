@@ -1,25 +1,33 @@
 {
   "name": "certificate-generator",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Multi-company platform for issuing tamper-evident, QR-verifiable documents from uploaded templates",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "test": "node --env-file-if-exists=.env --test test/e2e.test.js",
+    "seed:demo": "node --env-file-if-exists=.env scripts/seed-demo.js",
+    "import:legacy": "node --env-file-if-exists=.env scripts/import-legacy.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "handlebars": "^4.7.8",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.13.1",
     "puppeteer": "^24.38.0",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^0.3.24"
   },
-  "devDependencies": {
-    "tailwindcss": "^4.2.1"
+  "engines": {
+    "node": ">=22.9"
   }
 }

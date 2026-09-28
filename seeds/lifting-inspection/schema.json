@@ -1,0 +1,32 @@
+[
+  { "key": "examDate", "label": "Date of examination", "type": "date", "required": true, "showOnVerify": true },
+  { "key": "reportDate", "label": "Date of report", "type": "date", "required": true },
+  { "key": "colorCode", "label": "Colour code (if required)", "type": "text" },
+  { "key": "employerName", "label": "Employer (name & address)", "type": "textarea", "required": true, "showOnVerify": true },
+  { "key": "premisesAddress", "label": "Premises where examined", "type": "textarea", "required": true, "showOnVerify": true },
+  { "key": "relevantStandard", "label": "Relevant standard", "type": "text", "required": true, "showOnVerify": true },
+  { "key": "reasonInstallation", "label": "Reason A — Installation", "type": "checkbox" },
+  { "key": "reasonSixMonthly", "label": "Reason B — 6 monthly", "type": "checkbox" },
+  { "key": "reasonTwelveMonthly", "label": "Reason C — 12 monthly", "type": "checkbox" },
+  { "key": "reasonWrittenScheme", "label": "Reason D — Written scheme", "type": "checkbox" },
+  { "key": "reasonExceptional", "label": "Reason E — Exceptional circumstance", "type": "checkbox" },
+  { "key": "defectSheetAttached", "label": "Defect / observation sheet attached", "type": "checkbox" },
+  {
+    "key": "items",
+    "label": "Equipment examined",
+    "type": "table",
+    "required": true,
+    "columns": [
+      { "key": "identificationNumber", "label": "ID number", "type": "text", "required": true },
+      { "key": "description", "label": "Description", "type": "text", "required": true },
+      { "key": "wllOrSwl", "label": "WLL / SWL", "type": "text" },
+      { "key": "lastThoroughExamDate", "label": "Last exam", "type": "text" },
+      { "key": "manufactureDate", "label": "Manufactured", "type": "text" },
+      { "key": "nextThoroughExamDate", "label": "Next exam due", "type": "text", "required": true },
+      { "key": "examinationReason", "label": "Reason", "type": "select", "options": ["A", "B", "C", "D", "E"] },
+      { "key": "testDetails", "label": "Test details", "type": "text" },
+      { "key": "status", "label": "Status", "type": "select", "options": ["ND", "SDR", "NF", "OBS"], "required": true },
+      { "key": "safeToUse", "label": "Safe to use", "type": "select", "options": ["YES", "NO"], "required": true }
+    ]
+  }
+]
