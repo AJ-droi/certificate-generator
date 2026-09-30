@@ -64,10 +64,11 @@ async function startApp({ port = 0 } = {}) {
 }
 
 async function stopApp() {
-  await new Promise((resolve) => server.close(resolve))
+  // startApp may have refused to run: don't hide its error behind this one.
+  if (server) await new Promise((resolve) => server.close(resolve))
   await closeBrowser()
   await closeRedis()
-  await AppDataSource.destroy()
+  if (AppDataSource.isInitialized) await AppDataSource.destroy()
 }
 
 // Minimal cookie-aware HTTP client: client()(method, url, body?, headers?).
