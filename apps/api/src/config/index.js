@@ -61,7 +61,7 @@ const config = {
       user: str("PGUSER", "postgres"),
       password: str("PGPASSWORD", ""),
       name: str("PGDATABASE", "certificate_generator"),
-      ssl: bool("PGSSL", false),
+      ssl: bool("PGSSL", false) || /[?&]sslmode=(require|verify-ca|verify-full)\b/.test(str("DATABASE_URL", "")),
       poolSize: int("PG_POOL_SIZE", 10),
     }
   },
@@ -88,6 +88,9 @@ const config = {
   // Shared state for more than one server: rate limits and dashboard previews.
   // Without it both are kept in this process's memory.
   get redisUrl() { return str("REDIS_URL", "") },
+
+  // How long /readyz waits for each dependency (database, storage, Redis).
+  get readyCheckTimeoutMs() { return Math.max(500, int("READY_CHECK_TIMEOUT_MS", 10_000)) },
 
   get logLevel() { return str("LOG_LEVEL", this.isTest ? "silent" : "info") },
   get sentryDsn() { return str("SENTRY_DSN", "") },

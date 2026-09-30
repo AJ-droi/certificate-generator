@@ -55,11 +55,30 @@ function localDriver() {
       await fs.promises.mkdir(root(), { recursive: true })
       await fs.promises.access(root(), fs.constants.W_OK)
     },
+    async list() {
+      const keys = []
+      const walk = async (dir) => {
+        let entries
+        try {
+          entries = await fs.promises.readdir(path.join(root(), dir), { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const e of entries) {
+          const key = dir ? `${dir}/${e.name}` : e.name
+          if (e.isDirectory()) await walk(key)
+          else if (KEY_RE.test(key)) keys.push(key)
+        }
+      }
+      await walk("")
+      return keys
+    },
+    remove: (key) => fs.promises.rm(abs(key), { force: true }),
   }
 }
 
 function s3Driver() {
-  const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, HeadBucketCommand } = require("@aws-sdk/client-s3")
+  const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, HeadBucketCommand, ListObjectsV2Command, DeleteObjectCommand } = require("@aws-sdk/client-s3")
   const s3 = config.storage.s3
   const client = new S3Client({
     region: s3.region,
@@ -94,6 +113,20 @@ function s3Driver() {
     },
     async check() {
       await client.send(new HeadBucketCommand({ Bucket: s3.bucket }))
+    },
+    async list() {
+      const keys = []
+      const strip = s3.prefix ? `${s3.prefix}/` : ""
+      let token
+      do {
+        const page = await client.send(new ListObjectsV2Command({ Bucket: s3.bucket, Prefix: strip || undefined, ContinuationToken: token }))
+        for (const o of page.Contents || []) keys.push(o.Key.slice(strip.length))
+        token = page.NextContinuationToken
+      } while (token)
+      return keys
+    },
+    async remove(key) {
+      await client.send(new DeleteObjectCommand({ Bucket: s3.bucket, Key: Key(key) }))
     },
   }
 }
@@ -143,8 +176,29 @@ async function hasTemplateSource(organizationId, hash) {
 
 const readFile = async (key) => current().get(checkKey(key))
 
+// For server-side tools (scripts/storage.js): every stored file by key.
+const listKeys = () => current().list()
+const putKey = async (key, buffer) => current().put(checkKey(key), buffer)
+const hasKey = async (key) => current().exists(checkKey(key))
+const removeKey = async (key) => current().remove(checkKey(key))
+// The local folder, whichever driver is in use (for copying it to S3).
+const localStorage = () => localDriver()
+
 // For the readiness check.
 const checkStorage = () => current().check()
 const storageDriverName = () => current().name
 
-module.exports = { savePdf, readFile, saveTemplateSource, readTemplateSource, hasTemplateSource, checkStorage, storageDriverName }
+module.exports = {
+  savePdf,
+  readFile,
+  saveTemplateSource,
+  readTemplateSource,
+  hasTemplateSource,
+  checkStorage,
+  storageDriverName,
+  listKeys,
+  putKey,
+  hasKey,
+  removeKey,
+  localStorage,
+}

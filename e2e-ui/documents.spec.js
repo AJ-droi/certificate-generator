@@ -78,3 +78,17 @@ test("deep links work after signing in", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible()
   await expect(page.getByRole("heading", { name: "Signing key" })).toBeVisible()
 })
+
+test("the author can delete a draft", async ({ page }) => {
+  await signIn(page, "issuer")
+  await nav(page, "Templates")
+  await page.locator(".tile", { hasText: "Course certificate" }).getByRole("link", { name: "New document" }).click()
+  await page.getByLabel("Recipient name").fill("To be deleted")
+  await page.getByRole("button", { name: "Save draft" }).first().click()
+  await expect(page.locator(".badge").first()).toHaveText("Draft")
+  const number = (await page.getByRole("heading", { level: 1 }).textContent()).trim()
+  await page.getByRole("button", { name: "Delete" }).click()
+  await dialog(page).getByRole("button", { name: "Delete" }).click()
+  await expect(page.getByRole("heading", { name: "Documents", exact: true })).toBeVisible()
+  await expect(page.getByRole("link", { name: number })).toHaveCount(0)
+})

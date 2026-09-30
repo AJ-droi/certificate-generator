@@ -1,8 +1,9 @@
-# Local services for development and tests.
-#   npm run db:up      start Postgres in the background
-#   npm run db:down    stop everything (data is kept in the "pgdata" volume)
-#   npm run redis:up   start Redis too (optional; set REDIS_URL=redis://127.0.0.1:6380)
-#   npm run s3:up      start SeaweedFS, an S3-compatible store (optional; see test/e2e/storage-s3.test.js)
+# Local services for the automated tests only — the app itself uses the database
+# and bucket in .env (Neon). The tests wipe their databases, so they never use yours.
+#   npm run db:up      Postgres with the test databases (certificate_generator_test, …_ui_test)
+#   npm run db:down    stop everything
+#   npm run redis:up   Redis, to run the tests with REDIS_URL=redis://127.0.0.1:6380 (optional)
+#   npm run s3:up      SeaweedFS, for the S3 storage tests (optional; see apps/api/test/e2e/storage-s3.test.js)
 services:
   db:
     image: postgres:16-alpine
@@ -11,7 +12,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: certificate_generator
+      POSTGRES_DB: certificate_generator_test
     ports:
       # Host port 5433 so it doesn't clash with a Postgres already running on 5432.
       - "5433:5432"

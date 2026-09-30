@@ -11,7 +11,8 @@ const { config } = require("../config")
 
 const router = express.Router()
 
-const withTimeout = (p, ms = 3000) =>
+// Hosted storage far from the server can take seconds to answer; READY_CHECK_TIMEOUT_MS tunes this.
+const withTimeout = (p, ms = config.readyCheckTimeoutMs) =>
   Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms))])
 
 async function check(name, fn) {

@@ -17,7 +17,7 @@
     "test": "npm run test -w @doctrust/api",
     "test:unit": "npm run test:unit -w @doctrust/api",
     "test:e2e": "npm run test:e2e -w @doctrust/api",
-    "test:ui": "PGDATABASE_UI_TEST=${PGDATABASE_UI_TEST:-certificate_generator_ui_test} node --env-file-if-exists=.env node_modules/.bin/playwright test",
+    "test:ui": "node --env-file-if-exists=.env node_modules/.bin/playwright test",
     "seed:demo": "npm run seed:demo -w @doctrust/api",
     "import:legacy": "npm run import:legacy -w @doctrust/api --",
     "org": "npm run org -w @doctrust/api --",
@@ -31,7 +31,8 @@
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d --wait db",
     "redis:up": "docker compose up -d --wait redis",
-    "s3:up": "docker compose up -d --wait s3"
+    "s3:up": "docker compose up -d --wait s3",
+    "storage": "npm run storage -w @doctrust/api --"
   },
   "engines": {
     "node": ">=22.9"

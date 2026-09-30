@@ -65,12 +65,16 @@ const requireRole = (...roles) => (req, res, next) => {
   next()
 }
 
-// Blocks cross-site form posts: browsers can't send JSON (or a PDF body)
-// cross-origin without a CORS preflight, which this server never approves.
+// Blocks cross-site form posts. A cross-site POST can arrive without the browser
+// asking first (forms, "simple" fetches), so every POST must be JSON (or a PDF
+// upload), which browsers only send cross-origin after a CORS check this server
+// never approves. PUT, PATCH and DELETE always need that check, so they only have
+// to be JSON when they carry a body (e.g. "delete this draft" has none).
 function requireJsonForWrites(req, res, next) {
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !req.is("application/json") && !req.is("application/pdf")) {
-    throw new HttpError(415, "Send requests as JSON")
-  }
+  const typed = req.is("application/json") || req.is("application/pdf")
+  const hasBody = Number(req.headers["content-length"] || 0) > 0 || req.headers["transfer-encoding"] !== undefined
+  if (req.method === "POST" && !typed) throw new HttpError(415, "Send requests as JSON")
+  if (["PUT", "PATCH", "DELETE"].includes(req.method) && hasBody && !typed) throw new HttpError(415, "Send requests as JSON")
   next()
 }
 

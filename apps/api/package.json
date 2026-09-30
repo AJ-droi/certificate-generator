@@ -11,7 +11,7 @@
     "worker": "node --env-file-if-exists=../../.env worker.js",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "NODE_ENV=test node --test \"test/unit/*.test.js\"",
-    "test:e2e": "PGDATABASE=${PGDATABASE_TEST:-certificate_generator_test} node --env-file-if-exists=../../.env --test --test-concurrency=1 --test-timeout=120000 \"test/e2e/*.test.js\"",
+    "test:e2e": "node --env-file-if-exists=../../.env --test --test-concurrency=1 --test-timeout=120000 \"test/e2e/*.test.js\"",
     "seed:demo": "node --env-file-if-exists=../../.env scripts/seed-demo.js",
     "import:legacy": "node --env-file-if-exists=../../.env scripts/import-legacy.js",
     "org": "node --env-file-if-exists=../../.env scripts/org-verification.js",
@@ -20,7 +20,8 @@
     "db:status": "node --env-file-if-exists=../../.env scripts/db.js status",
     "db:revert": "node --env-file-if-exists=../../.env scripts/db.js revert",
     "db:check": "node --env-file-if-exists=../../.env scripts/db.js check",
-    "db:migration:generate": "node --env-file-if-exists=../../.env scripts/db.js generate"
+    "db:migration:generate": "node --env-file-if-exists=../../.env scripts/db.js generate",
+    "storage": "node --env-file-if-exists=../../.env scripts/storage.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1143.0",

@@ -13,10 +13,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PGHOST: 127.0.0.1
-  PGPORT: "5432"
-  PGUSER: postgres
-  PGPASSWORD: postgres
+  # Tests use TEST_DATABASE_URL / UI_TEST_DATABASE_URL (the Postgres services below).
+  TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/certificate_generator_test
+  UI_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/certificate_generator_ui_test
   REDIS_URL: redis://127.0.0.1:6379
   # Ubuntu runners block the Chrome sandbox's user namespaces; the test
   # templates are ours, so run Chrome without it here only.
@@ -59,8 +58,8 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 3s --health-retries 30
     env:
-      PGDATABASE: certificate_generator_test
-      PGDATABASE_TEST: certificate_generator_test
+      # For the migration check (npm run db:check uses the app's database settings).
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/certificate_generator_test
       # S3 storage tests (apps/api/test/e2e/storage-s3.test.js) against SeaweedFS, started below.
       S3_TEST_ENDPOINT: http://127.0.0.1:8333
     steps:
@@ -109,8 +108,6 @@ jobs:
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 3s --health-retries 30
-    env:
-      PGDATABASE_UI_TEST: certificate_generator_ui_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -3,15 +3,27 @@ const { DataSource } = require("typeorm")
 const entities = require("../entities")
 const { config } = require("./index")
 
+function withPort(url) {
+  const u = new URL(url)
+  if (!u.port) u.port = "5432"
+  // Certificates are always checked (see `ssl` below); say so, instead of the
+  // weaker-sounding "require" that providers put in their connection strings.
+  if (["prefer", "require", "verify-ca"].includes(u.searchParams.get("sslmode"))) u.searchParams.set("sslmode", "verify-full")
+  return u.toString()
+}
+
 function dataSourceOptions() {
   const db = config.database
-  const connection = db.url
-    ? { url: db.url }
-    : { host: db.host, port: db.port, username: db.user, password: db.password, database: db.name }
+  // With DATABASE_URL, everything comes from it. Hosted providers often leave the
+  // port out; it's filled in here, or a stray PGPORT (e.g. for a local database)
+  // would silently be used instead.
+  const connection = db.url ? { url: withPort(db.url) } : { host: db.host, port: db.port, username: db.user, password: db.password, database: db.name }
   return {
     type: "postgres",
     ...connection,
-    ssl: db.ssl ? { rejectUnauthorized: false } : false,
+    // Hosted databases (Neon etc.) need TLS: set PGSSL=true or put sslmode=require
+    // in DATABASE_URL. The server's certificate is always checked.
+    ssl: db.ssl ? { rejectUnauthorized: true } : undefined,
     logging: false,
     // The schema only changes through migrations (src/migrations, `npm run db:migrate`),
     // never automatically: an automatic sync can drop columns holding real data.

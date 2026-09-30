@@ -9,6 +9,12 @@ const os = require("node:os")
 const path = require("node:path")
 
 process.env.NODE_ENV = "test"
+// Tests wipe their database, so they never use the app's database from .env
+// (DATABASE_URL may be your real Neon database): they use TEST_DATABASE_URL,
+// by default the Docker Compose Postgres (npm run db:up).
+const APP_DATABASE_URL = process.env.DATABASE_URL || ""
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || "postgres://postgres:postgres@127.0.0.1:5433/certificate_generator_test"
+for (const k of ["PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE", "PGSSL"]) delete process.env[k]
 process.env.STORAGE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "cg-test-"))
 // Never touch the storage configured in .env (it may be a real bucket): tests use
 // the temporary folder above, except storage-s3.test.js, which sets CG_TEST_S3.
@@ -42,9 +48,10 @@ let server
 let base = ""
 
 async function startApp({ port = 0 } = {}) {
-  const target = process.env.DATABASE_URL || process.env.PGDATABASE || ""
-  if (!/test/i.test(target)) {
-    throw new Error("Refusing to run: tests wipe the database. Point PGDATABASE (or DATABASE_URL) at a database with 'test' in its name.")
+  const target = process.env.DATABASE_URL
+  const name = decodeURIComponent(new URL(target).pathname.slice(1))
+  if (!/test/i.test(name) || target === APP_DATABASE_URL) {
+    throw new Error("Refusing to run: tests wipe their database. Set TEST_DATABASE_URL to a separate database with 'test' in its name.")
   }
   await runMigrations()
   await AppDataSource.query(`TRUNCATE ${TABLES.join(", ")} RESTART IDENTITY CASCADE`)

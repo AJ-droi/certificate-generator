@@ -113,6 +113,13 @@ test("four-eyes: a person can't approve their own document", async () => {
   assert.equal((await acme.approver("POST", `/api/documents/${d.id}/approve`, {})).status, 403)
 })
 
+test("a draft can be deleted (a DELETE with no body, as the dashboard sends it)", async () => {
+  const d = (await acme.issuer("POST", "/api/documents", { templateId, data: h.DATA })).data.document
+  assert.equal((await acme.approver("DELETE", `/api/documents/${d.id}`)).status, 403, "only its author or an admin")
+  assert.equal((await acme.issuer("DELETE", `/api/documents/${d.id}`)).status, 200)
+  assert.equal((await acme.issuer("GET", `/api/documents/${d.id}`)).status, 404)
+})
+
 test("drafts and unknown codes are not visible publicly", async () => {
   const d = (await acme.issuer("POST", "/api/documents", { templateId, data: h.DATA })).data.document
   assert.equal((await anon("GET", `/api/public/verify/${d.id}`)).status, 404)

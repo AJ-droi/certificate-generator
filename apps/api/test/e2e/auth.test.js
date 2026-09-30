@@ -27,6 +27,9 @@ test("sign up creates a company with its own signing key, not yet verified", asy
 test("writes must be JSON (blocks cross-site form posts)", async () => {
   const r = await admin("POST", "/api/templates", "name=x", { "content-type": "application/x-www-form-urlencoded" })
   assert.equal(r.status, 415)
+  // A POST with no body and no type (a cross-site "simple" request) is refused too.
+  assert.equal((await admin("POST", "/api/auth/logout-nothing")).status, 415)
+  assert.equal((await admin("PATCH", "/api/org", "name=x", { "content-type": "text/plain" })).status, 415)
 })
 
 test("admin invites people; temporary passwords must be changed", async () => {

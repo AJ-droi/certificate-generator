@@ -3,8 +3,7 @@
 const PORT = Number(process.env.UI_TEST_PORT || 3199)
 
 module.exports = async () => {
-  process.env.PGDATABASE = process.env.PGDATABASE_UI_TEST || "certificate_generator_ui_test"
-  delete process.env.DATABASE_URL
+  process.env.TEST_DATABASE_URL = process.env.UI_TEST_DATABASE_URL || "postgres://postgres:postgres@127.0.0.1:5433/certificate_generator_ui_test"
   const h = require("../apps/api/test/helpers")
   const { Worker } = require("../apps/api/src/services/jobs.service")
   const platform = require("../apps/api/src/services/platform.service")

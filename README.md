@@ -30,14 +30,13 @@ The verify page shows the real contents of the document. A forger who copies a g
 
 ## Quick start
 
-Requires Node 22.9+ and Docker (for Postgres), or your own PostgreSQL.
+Requires Node 22.9+, a [Neon](https://neon.com) project (Postgres database + Object Storage bucket), and Docker only if you run the tests.
 
 ```bash
 npm install
 npx puppeteer browsers install chrome   # Chrome for making PDFs (skip if PUPPETEER_EXECUTABLE_PATH is set)
-cp .env.example .env                    # set APP_SECRET (openssl rand -base64 48)
-npm run db:up                           # Postgres in Docker, port 5433 (also creates the test databases)
-npm run db:migrate                      # create the tables
+cp .env.example .env                    # APP_SECRET (openssl rand -base64 48), DATABASE_URL, bucket keys
+npm run db:migrate                      # create the tables in your Neon database
 npm run seed:demo                       # optional: demo company, 3 users, sample certificates
 npm run dev                             # API + dashboards with hot reload
 ```
@@ -207,7 +206,7 @@ npm run test:ui     # browser tests of both dashboards (needs npm run build firs
 npm run db:check    # fails if src/entities changed without a migration
 ```
 
-The end-to-end tests **wipe their database**, so they refuse to run unless its name contains "test" (`certificate_generator_test` by default; the Docker Compose Postgres creates it). Each file in `apps/api/test/e2e/` starts from an empty database and they run one at a time:
+The tests **wipe their database**, so they never use the app's `DATABASE_URL`: they use `TEST_DATABASE_URL` (and `UI_TEST_DATABASE_URL` for the browser tests), by default the Docker Compose Postgres — run `npm run db:up` first. They refuse to run unless the database name contains "test" and differs from the app's. Each file in `apps/api/test/e2e/` starts from an empty database and they run one at a time:
 
 | File | Covers |
 |---|---|
