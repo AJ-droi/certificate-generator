@@ -10,10 +10,12 @@ const path = require("path")
 const { AppDataSource, initializeDatabase, repo } = require("../src/config/database")
 const { createTemplate, getVersion } = require("../src/services/template.service")
 const { normalizeData } = require("../src/lib/schema")
-const { signPayload, sha256, newPublicId } = require("../src/lib/crypto")
-const { renderIssued, toPdf } = require("../src/services/document.service")
+const { signPayload, newPublicId } = require("../src/lib/crypto")
+const { RENDER_PDF_JOB } = require("../src/services/document.service")
+const { enqueue, runUntilIdle } = require("../src/services/jobs.service")
 const { closeBrowser } = require("../src/services/pdf.service")
-const storage = require("../src/services/storage.service")
+const { systemContext } = require("../src/lib/context")
+const { isVerified, verifiedIdentity } = require("../src/services/org.service")
 
 const SEED = path.join(__dirname, "..", "seeds", "lifting-inspection")
 const LEGACY_TEMPLATE_NAME = "Report of Thorough Examination (LOLER)"
@@ -95,6 +97,7 @@ async function main() {
   const org = await repo("Organization")
     .createQueryBuilder("o").addSelect("o.privateKeyEnc").where("o.slug = :slug", { slug }).getOne()
   if (!org) throw new Error(`No company with slug "${slug}"`)
+  if (!dryRun && !isVerified(org)) throw new Error(`Verify the company first: npm run org -- verify ${slug} --by "Your name" ...`)
   const admin = await repo("User").findOne({ where: { organizationId: org.id, role: "admin" } })
 
   let template
@@ -104,7 +107,7 @@ async function main() {
   } else {
     template = await repo("Template").findOne({ where: { organizationId: org.id, name: LEGACY_TEMPLATE_NAME } })
     if (!template && !dryRun) {
-      ;({ template } = await createTemplate(admin, {
+      ;({ template } = await createTemplate(systemContext({ user: admin, ip: "import-script" }), {
         name: LEGACY_TEMPLATE_NAME,
         description: "Imported from the previous certificate generator.",
         html: fs.readFileSync(path.join(SEED, "template.hbs"), "utf8"),
@@ -117,7 +120,6 @@ async function main() {
   const version = template ? await getVersion(org.id, template.currentVersionId) : null
   const schema = version ? version.schema : JSON.parse(fs.readFileSync(path.join(SEED, "schema.json"), "utf8"))
   const baseUrl = new URL(process.env.PUBLIC_BASE_URL)
-  const req = { protocol: baseUrl.protocol.replace(":", ""), get: () => baseUrl.host }
 
   const rows = await loadLegacyRows()
   let imported = 0
@@ -143,8 +145,8 @@ async function main() {
       const issuedAt = new Date(row.createdAt || Date.now())
       const publicId = newPublicId()
       const signedPayload = {
-        v: 1,
-        org: { id: org.id, name: org.name, slug: org.slug, keyId: org.keyId },
+        v: 2,
+        org: { id: org.id, name: org.name, slug: org.slug, keyId: org.keyId, verified: verifiedIdentity(org) },
         documentId: doc.id,
         documentNo: doc.documentNo,
         publicId,
@@ -160,10 +162,9 @@ async function main() {
       Object.assign(doc, {
         status: "issued", publicId, issuedAt, issuedBy: admin.id, signedPayload, contentHash, signature, keyId: org.keyId,
       })
-      const pdf = await toPdf(await renderIssued(req, doc, org, version))
-      doc.pdfPath = await storage.savePdf(org.id, doc.id, pdf)
-      doc.pdfHash = sha256(pdf)
+      doc.pdfStatus = "pending"
       await tx.getRepository("Document").save(doc)
+      await enqueue(tx, RENDER_PDF_JOB, { documentId: doc.id, organizationId: org.id, baseUrl: baseUrl.origin })
       await tx.getRepository("AuditEvent").insert({
         organizationId: org.id, action: "document.imported", entityType: "document", entityId: doc.id,
         details: { documentNo: doc.documentNo }, ip: "import-script",
@@ -171,6 +172,10 @@ async function main() {
     })
     console.log(`import ${m.documentNo}`)
     imported++
+  }
+  if (imported) {
+    console.log("\nMaking the PDFs…")
+    await runUntilIdle()
   }
   console.log(`\nDone: ${imported} imported, ${skipped} skipped.`)
   if (imported) console.log(`Set LEGACY_ORG_SLUG=${slug} so old QR codes (/report/<number>) keep working.`)

@@ -78,7 +78,7 @@ async function loadPdf(buffer) {
 
 const prettify = (name) =>
   String(name)
-    .replace(/[_.\-]+/g, " ")
+    .replace(/[_.-]+/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ")
     .trim()
@@ -98,7 +98,7 @@ async function inspectSourcePdf(buffer) {
   const geos = pages.map(geometry)
 
   const formFields = []
-  let form = null
+  let form
   try {
     form = doc.getForm()
   } catch {
@@ -429,7 +429,6 @@ async function renderOverlay({ source, layout, schema, context, stamp, toPng }) 
     // Some forms can't be flattened; their widgets are removed below instead.
   }
   const out = await PDFDocument.create()
-  const font = await out.embedFont(StandardFonts.Helvetica)
   const stampFont = await out.embedFont(StandardFonts.HelveticaBold)
   const FONTS = {
     sans: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],

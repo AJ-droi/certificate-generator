@@ -3,25 +3,26 @@
 //
 //   npm run seed:demo
 require("reflect-metadata")
+const { In } = require("typeorm")
 const fs = require("fs")
 const path = require("path")
-const { AppDataSource, initializeDatabase, repo } = require("../src/config/database")
-const { createOrganizationWithAdmin } = require("../src/services/org.service")
+const { AppDataSource, initializeDatabase, pendingMigrations, repo } = require("../src/config/database")
+const { createOrganizationWithAdmin, verifyOrganization } = require("../src/services/org.service")
 const { createTemplate, uploadSource } = require("../src/services/template.service")
 const documents = require("../src/services/document.service")
 const { hashPassword, publicUser } = require("../src/lib/auth")
 const { closeBrowser } = require("../src/services/pdf.service")
+const { runUntilIdle } = require("../src/services/jobs.service")
+const { systemContext } = require("../src/lib/context")
 
 const DIR = path.join(__dirname, "..", "seeds", "lifting-inspection")
 const PASSWORD = process.env.DEMO_PASSWORD || "demo-password-123"
 
-function fakeReq(user) {
-  const base = new URL(process.env.PUBLIC_BASE_URL || "http://localhost:3100")
-  return { user, ip: "seed", protocol: base.protocol.replace(":", ""), get: () => base.host }
-}
+const as = (user) => systemContext({ user, ip: "seed" })
 
 async function main() {
   await initializeDatabase()
+  if ((await pendingMigrations()).length) throw new Error("Run npm run db:migrate first")
   if (await repo("User").findOne({ where: { email: "admin@demo.test" } })) {
     console.log("Demo company already exists. Sign in as admin@demo.test")
     return
@@ -38,6 +39,15 @@ async function main() {
     organization.logo = `data:image/png;base64,${fs.readFileSync(logo).toString("base64")}`
     await repo("Organization").save(organization)
   }
+  // Real companies are verified by platform staff (npm run org -- verify); the demo one is pre-verified.
+  await verifyOrganization(organization.slug, {
+    by: "demo seed",
+    legalName: "Demo Inspection Services Ltd",
+    registrationNumber: "DEMO-0001",
+    registrationCountry: "NG",
+    domain: "demo.example",
+    trustDomain: true,
+  })
 
   const passwordHash = await hashPassword(PASSWORD)
   const signature = (initials) =>
@@ -61,7 +71,7 @@ async function main() {
   await repo("User").save([issuer, approver])
 
   const sample = JSON.parse(fs.readFileSync(path.join(DIR, "sample.json"), "utf8"))
-  const { template } = await createTemplate(admin, {
+  const { template } = await createTemplate(as(admin), {
     name: "Report of Thorough Examination (LOLER)",
     description: "Lifting equipment / fall protection inspection report. Ten items per page.",
     html: fs.readFileSync(path.join(DIR, "template.hbs"), "utf8"),
@@ -69,14 +79,9 @@ async function main() {
     settings: { numberPrefix: "DEMO/LOLER-", numberPadding: 4, sampleData: sample },
   })
 
-  const draft = await documents.createDocument(fakeReq(issuer), { templateId: template.id, data: sample })
-  await documents.submitForApproval(fakeReq(issuer), draft.id)
-  let issued = null
-  try {
-    issued = await documents.approveAndIssue(fakeReq(approver), draft.id)
-  } catch (err) {
-    console.warn(`Couldn't issue the sample (is Chrome available for Puppeteer?): ${err.message}`)
-  }
+  const draft = await documents.createDocument(as(issuer), { templateId: template.id, data: sample })
+  await documents.submitForApproval(as(issuer), draft.id)
+  const issued = await documents.approveAndIssue(as(approver), draft.id)
 
   console.log("\nDemo company created. Sign in at /app with any of these (password: %s):", PASSWORD)
   for (const u of [admin, issuer, approver]) console.log(`  ${publicUser(u).role.padEnd(8)} ${u.email}`)
@@ -85,22 +90,23 @@ async function main() {
   // A second template made from an uploaded PDF form, with boxes placed on it.
   const PT = path.join(__dirname, "..", "seeds", "pressure-test")
   const pt = JSON.parse(fs.readFileSync(path.join(PT, "template.json"), "utf8"))
-  const { sourceHash } = await uploadSource(admin, fs.readFileSync(path.join(PT, "form.pdf")))
-  const { template: ptTemplate } = await createTemplate(admin, { ...pt, kind: "pdf", sourceHash })
+  const { sourceHash } = await uploadSource(as(admin), fs.readFileSync(path.join(PT, "form.pdf")))
+  const { template: ptTemplate } = await createTemplate(as(admin), { ...pt, kind: "pdf", sourceHash })
   const ptData = { ...pt.settings.sampleData }
   // 15 items: more than fit on the page, so the page repeats for the rest.
   ptData.items = Array.from({ length: 15 }, (_, i) => ({
     ...pt.settings.sampleData.items[i % pt.settings.sampleData.items.length],
     tag: `FL-${101 + i}`,
   }))
-  const ptDraft = await documents.createDocument(fakeReq(issuer), { templateId: ptTemplate.id, data: ptData })
-  await documents.submitForApproval(fakeReq(issuer), ptDraft.id)
-  try {
-    const ptIssued = await documents.approveAndIssue(fakeReq(approver), ptDraft.id)
-    console.log(`Sample pressure test certificate (from a PDF form) ${ptIssued.documentNo}: /v/${ptIssued.publicId}`)
-  } catch (err) {
-    console.warn(`Couldn't issue the PDF sample: ${err.message}`)
-  }
+  const ptDraft = await documents.createDocument(as(issuer), { templateId: ptTemplate.id, data: ptData })
+  await documents.submitForApproval(as(issuer), ptDraft.id)
+  const ptIssued = await documents.approveAndIssue(as(approver), ptDraft.id)
+  console.log(`Sample pressure test certificate (from a PDF form) ${ptIssued.documentNo}: /v/${ptIssued.publicId}`)
+
+  // The official PDFs are made by background jobs; make them now.
+  await runUntilIdle()
+  const notReady = await repo("Document").count({ where: { organizationId: organization.id, pdfStatus: In(["pending", "failed"]) } })
+  if (notReady) console.warn(`\n${notReady} PDF(s) couldn't be made yet — is Chrome available for Puppeteer? The server retries them; see the jobs table.`)
 }
 
 main()

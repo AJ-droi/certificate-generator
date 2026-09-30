@@ -1,28 +1,47 @@
 const puppeteer = require("puppeteer")
+const { config } = require("../config")
+const { logger } = require("../lib/logger")
 
 // Templates are written by customers, so the headless browser may only load
 // inline data and a short list of public CDNs. This stops a template from
 // reading local files (file://) or calling internal services.
-const DEFAULT_ALLOWED_HOSTS = "cdn.tailwindcss.com,fonts.googleapis.com,fonts.gstatic.com,cdn.jsdelivr.net,cdnjs.cloudflare.com"
-const allowedHosts = () =>
-  new Set(
-    String(process.env.RENDER_ALLOWED_HOSTS ?? DEFAULT_ALLOWED_HOSTS)
-      .split(",")
-      .map((h) => h.trim().toLowerCase())
-      .filter(Boolean),
-  )
+const allowedHosts = () => new Set(config.renderAllowedHosts)
+
+// At most RENDER_CONCURRENCY Chrome pages at once in this process; the rest wait
+// their turn. Stops a burst of previews or PDFs from exhausting memory.
+const waiting = []
+let active = 0
+async function withPage(fn) {
+  if (active >= config.render.concurrency) await new Promise((resolve) => waiting.push(resolve))
+  active++
+  const started = Date.now()
+  try {
+    const browser = await getBrowser()
+    const page = await browser.newPage()
+    try {
+      return await fn(page)
+    } finally {
+      await page.close().catch(() => {})
+    }
+  } finally {
+    active--
+    const next = waiting.shift()
+    if (next) next()
+    logger.debug({ ms: Date.now() - started, queued: waiting.length }, "chrome page closed")
+  }
+}
 
 let browserPromise = null
 
 function getBrowser() {
   if (!browserPromise) {
     const args = ["--disable-dev-shm-usage", "--no-first-run", "--no-zygote"]
-    if (process.env.PUPPETEER_NO_SANDBOX === "true") args.push("--no-sandbox", "--disable-setuid-sandbox")
+    if (config.render.noSandbox) args.push("--no-sandbox", "--disable-setuid-sandbox")
     browserPromise = puppeteer
       .launch({
         headless: true,
         args,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        executablePath: config.render.executablePath || undefined,
       })
       .then((browser) => {
         browser.on("disconnected", () => {
@@ -49,10 +68,8 @@ function isAllowed(url, hosts) {
 }
 
 async function htmlToPdf(html) {
-  const browser = await getBrowser()
-  const page = await browser.newPage()
   const hosts = allowedHosts()
-  try {
+  return withPage(async (page) => {
     await page.setRequestInterception(true)
     page.on("request", (request) => {
       if (isAllowed(request.url(), hosts)) request.continue()
@@ -68,9 +85,7 @@ async function htmlToPdf(html) {
         timeout: 60000,
       }),
     )
-  } finally {
-    await page.close().catch(() => {})
-  }
+  })
 }
 
 // Converts an image the PDF library can't embed directly (WebP, GIF, SVG) into PNG.
@@ -78,9 +93,7 @@ async function imageToPng(dataUrl) {
   if (!/^data:image\/(webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(String(dataUrl))) {
     throw new Error("Unsupported image")
   }
-  const browser = await getBrowser()
-  const page = await browser.newPage()
-  try {
+  return withPage(async (page) => {
     await page.setRequestInterception(true)
     page.on("request", (r) => (r.url().startsWith("data:") || r.url() === "about:blank" ? r.continue() : r.abort()))
     await page.setJavaScriptEnabled(false)
@@ -89,9 +102,7 @@ async function imageToPng(dataUrl) {
     const box = await img.boundingBox()
     if (!box || box.width < 1 || box.height < 1) throw new Error("Image has no size")
     return Buffer.from(await img.screenshot({ type: "png", omitBackground: true }))
-  } finally {
-    await page.close().catch(() => {})
-  }
+  })
 }
 
 async function closeBrowser() {

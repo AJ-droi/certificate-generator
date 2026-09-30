@@ -1,3 +1,6 @@
+const { logger } = require("./logger")
+const { captureError } = require("./monitoring")
+
 class HttpError extends Error {
   constructor(status, message, details) {
     super(message)
@@ -26,8 +29,11 @@ function errorHandler(err, req, res, next) {
   if (err instanceof HttpError) {
     return res.status(err.status).json({ message: err.message, details: err.details })
   }
-  console.error(err)
-  res.status(500).json({ message: "Something went wrong" })
+  // Unexpected: log it with the request ID and report it. The user only sees the ID.
+  const log = req.log || logger
+  log.error({ err }, "Unhandled error")
+  captureError(err, { requestId: req.id, method: req.method, path: String(req.originalUrl || "").split("?")[0] })
+  res.status(500).json({ message: "Something went wrong", requestId: req.id })
 }
 
 module.exports = { HttpError, badRequest, forbidden, notFound, conflict, errorHandler }

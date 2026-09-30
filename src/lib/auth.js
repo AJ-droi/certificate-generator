@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs")
 const { deriveKey } = require("./crypto")
 const { repo } = require("../config/database")
 const { HttpError, forbidden } = require("./errors")
+const { config } = require("../config")
 
 const COOKIE = "sid"
 const SESSION_HOURS = 12
@@ -26,7 +27,7 @@ function setSession(res, user) {
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: config.isProduction,
     maxAge: SESSION_HOURS * 3600 * 1000,
     path: "/",
   })

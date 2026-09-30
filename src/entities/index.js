@@ -19,6 +19,22 @@ const Organization = new EntitySchema({
     publicKey: { type: "text", name: "public_key" },
     // Ed25519 private key, encrypted with APP_SECRET. Never stored in plain text.
     privateKeyEnc: { type: "text", name: "private_key_enc", select: false },
+    // Who the company really is. Only platform staff can set a company to "verified"
+    // (scripts/org-verification.js); until then it can't issue documents.
+    // unverified -> pending -> verified | rejected; verified -> suspended
+    verificationStatus: { type: "varchar", length: 20, name: "verification_status", default: "unverified" },
+    legalName: { type: "varchar", length: 200, name: "legal_name", nullable: true },
+    registrationNumber: { type: "varchar", length: 100, name: "registration_number", nullable: true },
+    registrationCountry: { type: "varchar", length: 2, name: "registration_country", nullable: true },
+    domain: { type: "varchar", length: 253, nullable: true },
+    // Proves control of the domain: published as a DNS TXT record.
+    domainToken: { type: "varchar", length: 64, name: "domain_token", nullable: true },
+    domainVerifiedAt: { type: "timestamptz", name: "domain_verified_at", nullable: true },
+    verificationRequestedAt: { type: "timestamptz", name: "verification_requested_at", nullable: true },
+    verifiedAt: { type: "timestamptz", name: "verified_at", nullable: true },
+    verifiedBy: { type: "varchar", length: 200, name: "verified_by", nullable: true },
+    // Reason for a rejection or suspension; shown to the company.
+    verificationNote: { type: "text", name: "verification_note", nullable: true },
     ...timestamps,
   },
 })
@@ -111,12 +127,61 @@ const Document = new EntitySchema({
     contentHash: { type: "varchar", length: 64, name: "content_hash", nullable: true },
     signature: { type: "text", nullable: true },
     keyId: { type: "varchar", length: 64, name: "key_id", nullable: true },
+    // The official PDF is made by a background job after issuing:
+    // pending -> ready | failed. (null for documents never issued.)
+    pdfStatus: { type: "varchar", length: 20, name: "pdf_status", nullable: true },
     pdfPath: { type: "varchar", length: 500, name: "pdf_path", nullable: true },
     pdfHash: { type: "varchar", length: 64, name: "pdf_hash", nullable: true },
     ...timestamps,
   },
   uniques: [{ columns: ["organizationId", "documentNo"] }],
   indices: [{ columns: ["organizationId", "status"] }],
+})
+
+// Platform staff: review and verify companies. Kept apart from company users, with
+// their own sessions, so no company account can ever act as staff.
+const PlatformAdmin = new EntitySchema({
+  name: "PlatformAdmin",
+  tableName: "platform_admins",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    email: { type: "varchar", length: 254, unique: true },
+    name: { type: "varchar", length: 200 },
+    passwordHash: { type: "varchar", length: 100, name: "password_hash", select: false },
+    // Authenticator-app secret, encrypted with APP_SECRET. Required to sign in.
+    totpSecretEnc: { type: "text", name: "totp_secret_enc", nullable: true, select: false },
+    totpEnabled: { type: "boolean", name: "totp_enabled", default: false },
+    // Last code step used, so a code can't be replayed.
+    totpLastStep: { type: "int", name: "totp_last_step", default: 0 },
+    mustChangePassword: { type: "boolean", name: "must_change_password", default: true },
+    active: { type: "boolean", default: true },
+    tokenVersion: { type: "int", name: "token_version", default: 0 },
+    lastLoginAt: { type: "timestamptz", name: "last_login_at", nullable: true },
+    ...timestamps,
+  },
+})
+
+// Background work, stored in Postgres so it survives restarts and can be shared by
+// several servers (workers claim jobs with SELECT … FOR UPDATE SKIP LOCKED).
+// Jobs are added in the same transaction as the change that needs them.
+const Job = new EntitySchema({
+  name: "Job",
+  tableName: "jobs",
+  columns: {
+    id: { type: "bigint", primary: true, generated: "increment" },
+    type: { type: "varchar", length: 60 },
+    payload: { type: "jsonb", default: () => "'{}'" },
+    // queued -> running -> done | failed (after maxAttempts)
+    status: { type: "varchar", length: 20, default: "queued" },
+    attempts: { type: "int", default: 0 },
+    maxAttempts: { type: "int", name: "max_attempts", default: 5 },
+    runAt: { type: "timestamptz", name: "run_at", default: () => "now()" },
+    lockedAt: { type: "timestamptz", name: "locked_at", nullable: true },
+    lockedBy: { type: "varchar", length: 100, name: "locked_by", nullable: true },
+    lastError: { type: "text", name: "last_error", nullable: true },
+    ...timestamps,
+  },
+  indices: [{ columns: ["status", "runAt"] }],
 })
 
 const AuditEvent = new EntitySchema({
@@ -136,4 +201,4 @@ const AuditEvent = new EntitySchema({
   indices: [{ columns: ["organizationId", "createdAt"] }, { columns: ["entityId"] }],
 })
 
-module.exports = { Organization, User, Template, TemplateVersion, Document, AuditEvent }
+module.exports = { Organization, User, Template, TemplateVersion, Document, PlatformAdmin, Job, AuditEvent }

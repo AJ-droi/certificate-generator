@@ -1,5 +1,4 @@
 const express = require("express")
-const rateLimit = require("express-rate-limit")
 const { repo } = require("../config/database")
 const {
   hashPassword, checkPassword, validatePassword, setSession, clearSession, requireAuth, publicUser,
@@ -7,19 +6,20 @@ const {
 const { createOrganizationWithAdmin, normalizeEmail, publicOrg } = require("../services/org.service")
 const { audit } = require("../lib/audit")
 const { HttpError } = require("../lib/errors")
+const { limiter } = require("../lib/rate-limit")
+const { config } = require("../config")
 
 const router = express.Router()
 
-const authLimiter = rateLimit({
+const authLimiter = limiter({
+  name: "auth",
   windowMs: 15 * 60 * 1000,
-  limit: Number(process.env.AUTH_RATE_LIMIT || 20),
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: { message: "Too many attempts. Try again in a few minutes." },
+  limit: () => config.rateLimits.auth,
+  message: "Too many attempts. Try again in a few minutes.",
 })
 
 router.post("/signup", authLimiter, async (req, res) => {
-  if (String(process.env.ALLOW_SIGNUP || "true").toLowerCase() === "false") {
+  if (!config.allowSignup) {
     throw new HttpError(403, "Sign-up is closed. Ask your administrator for an account.")
   }
   const { organization, user } = await createOrganizationWithAdmin(req.body || {})

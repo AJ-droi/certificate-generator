@@ -1,13 +1,11 @@
 const crypto = require("crypto")
+const { config } = require("../config")
 
+// No built-in fallback: a known secret would let anyone forge sessions and
+// decrypt every company's signing key. See assertConfig() for the start-up check.
 function appSecret() {
-  const secret = process.env.APP_SECRET
-  if (!secret || secret.length < 32) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("APP_SECRET must be set (32+ characters) in production")
-    }
-    return "dev-only-insecure-secret-change-me-please-0000"
-  }
+  const secret = config.appSecret
+  if (secret.length < 32) throw new Error("APP_SECRET must be set (32+ characters). Generate one with: openssl rand -base64 48")
   return secret
 }
 
@@ -100,6 +98,8 @@ function randomPassword() {
 
 module.exports = {
   appSecret,
+  encrypt,
+  decrypt,
   deriveKey,
   canonicalJson,
   sha256,

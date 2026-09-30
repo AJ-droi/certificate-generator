@@ -379,3 +379,17 @@ dialog.wide { width: min(1000px, 95vw); }
 
 .flabel { display: block; font-weight: 550; font-size: 0.9rem; margin-bottom: 4px; }
 .pcover { position: absolute; pointer-events: none; }
+
+/* ---- Platform staff dashboard ---- */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; text-decoration: none; color: var(--text); display: block; }
+a.stat:hover { border-color: var(--primary); }
+.stat .num { font-size: 1.7rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat .label { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+.stat.alert .num { color: var(--bad); }
+.stat.attention .num { color: var(--info); }
+.warn-list { margin: 6px 0 0; padding-left: 20px; }
+.qr-box { background: #fff; padding: 8px; border-radius: 8px; display: inline-block; }
+.qr-box img { display: block; width: 200px; height: 200px; }
+.num-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.nowrap { white-space: nowrap; }

@@ -1,4 +1,6 @@
-const APP_NAME = () => process.env.APP_NAME || "DocTrust"
+const { config } = require("../config")
+
+const APP_NAME = () => config.appName
 
 const esc = (v) =>
   String(v ?? "")

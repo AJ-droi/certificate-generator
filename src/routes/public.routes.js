@@ -1,21 +1,19 @@
 const express = require("express")
-const rateLimit = require("express-rate-limit")
 const { repo } = require("../config/database")
 const documents = require("../services/document.service")
 const storage = require("../services/storage.service")
 const renderCache = require("../lib/render-cache")
 const { audit } = require("../lib/audit")
 const { normalizePublicId } = require("../lib/crypto")
+const { verifiedIdentity } = require("../services/org.service")
+const { limiter } = require("../lib/rate-limit")
+const { requestContext } = require("../lib/context")
+const { config } = require("../config")
 const { esc, layout, formatDate, APP_NAME } = require("../views/html")
 
 const router = express.Router()
 
-const verifyLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  limit: Number(process.env.VERIFY_RATE_LIMIT || 60),
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-})
+const verifyLimiter = limiter({ name: "verify", windowMs: 60 * 1000, limit: () => config.rateLimits.verify })
 
 // ---- Landing ------------------------------------------------------------------
 
@@ -56,6 +54,17 @@ router.get("/verify", (req, res) => {
 
 // ---- Verification page ------------------------------------------------------------
 
+function pdfNotReadyPage(res, doc) {
+  res.status(503).setHeader("Retry-After", "30")
+  res.send(
+    layout({
+      title: "PDF not ready yet",
+      body: `
+<div class="notice info"><strong>The official PDF is still being prepared.</strong> Try again in a minute. You can already <a href="/v/${esc(doc.publicId)}">check the document's details</a>.</div>`,
+    }),
+  )
+}
+
 function notFoundPage(res) {
   res.status(404).send(
     layout({
@@ -70,8 +79,34 @@ function notFoundPage(res) {
   )
 }
 
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" })
+const countryName = (code) => {
+  try {
+    return regionNames.of(code) || code
+  } catch {
+    return code
+  }
+}
+
 const VERDICTS = {
-  valid: { cls: "verdict-ok", icon: "✓", title: "Valid document", text: (r) => `Issued by <strong>${esc(r.issuer.name)}</strong> and unchanged since it was signed.` },
+  valid: {
+    cls: "verdict-ok",
+    icon: "✓",
+    title: "Valid document",
+    text: (r) => `Issued by <strong>${esc(r.issuer.verified.legalName)}</strong> (${esc(r.issuer.verified.domain)}) and unchanged since it was signed.`,
+  },
+  issuer_unverified: {
+    cls: "verdict-warn",
+    icon: "!",
+    title: "Issuer not verified",
+    text: (r) => `This document is unchanged since it was signed, but nobody has confirmed that the account calling itself <strong>${esc(r.issuer.name)}</strong> really is that company. Don't rely on it without checking with the company directly.`,
+  },
+  issuer_suspended: {
+    cls: "verdict-bad",
+    icon: "✕",
+    title: "Issuer suspended — not valid",
+    text: (r) => `The account that issued this document (<strong>${esc(r.issuer.name)}</strong>) has been suspended by ${esc(APP_NAME())}. Don't rely on it.`,
+  },
   revoked: { cls: "verdict-bad", icon: "✕", title: "Revoked — not valid", text: (r) => `${esc(r.issuer.name)} revoked this document on ${esc(formatDate(r.revokedAt))}.` },
   superseded: { cls: "verdict-warn", icon: "!", title: "Replaced by a newer version", text: (r) => `${esc(r.issuer.name)} issued a correction. This version is no longer current.` },
   tampered: { cls: "verdict-bad", icon: "✕", title: "Failed integrity check", text: () => "This record doesn't match its digital signature. Don't rely on it, and contact the issuer." },
@@ -90,6 +125,20 @@ router.get("/v/:code", verifyLimiter, async (req, res) => {
   })
 
   const v = VERDICTS[r.verdict]
+  const ident = r.issuer.verified
+  const issuerCard = ident
+    ? `<section class="card">
+  <h2>Who issued it</h2>
+  <p class="muted">${esc(APP_NAME())} checked this company's registration and that it controls its website domain.</p>
+  <dl class="facts">
+    <div><dt>Registered name</dt><dd>${esc(ident.legalName)}</dd></div>
+    <div><dt>Registration number</dt><dd>${esc(ident.registrationNumber)} (${esc(countryName(ident.registrationCountry))})</dd></div>
+    <div><dt>Website</dt><dd>${esc(ident.domain)}</dd></div>
+    <div><dt>Verified since</dt><dd>${esc(formatDate(r.issuer.verifiedAt))}</dd></div>
+  </dl>
+  <p class="muted">If the company named on your document isn't this one, the document isn't genuine — even if everything else matches.</p>
+</section>`
+    : ""
   const facts = [
     ["Issued by", r.issuer.name],
     ["Document", r.templateName],
@@ -104,8 +153,9 @@ router.get("/v/:code", verifyLimiter, async (req, res) => {
     ["Digital signature", r.checks.signatureValid],
     ["Content fingerprint", r.checks.hashMatches],
     ["Record matches signed content", r.checks.recordMatches],
-    ["Official PDF unchanged", r.checks.pdfMatches],
+    [r.checks.pdfMatches === null ? "Official PDF (still being prepared)" : "Official PDF unchanged", r.checks.pdfMatches],
   ]
+  const pdfReady = r.pdfStatus === "ready"
 
   res.setHeader("Cache-Control", "no-store")
   res.send(
@@ -118,6 +168,7 @@ router.get("/v/:code", verifyLimiter, async (req, res) => {
 </div>
 ${r.status === "revoked" && r.revokeReason ? `<div class="notice bad"><strong>Reason:</strong> ${esc(r.revokeReason)}</div>` : ""}
 ${r.replacement ? `<div class="notice warn">Current version: <a href="/v/${esc(r.replacement.publicId)}">${esc(r.replacement.documentNo)}</a></div>` : ""}
+${issuerCard}
 
 <section class="card">
   <h2>Compare with the document you have</h2>
@@ -125,25 +176,25 @@ ${r.replacement ? `<div class="notice warn">Current version: <a href="/v/${esc(r
   <dl class="facts">${facts.map(([k, val]) => `<div><dt>${esc(k)}</dt><dd>${esc(val) || "—"}</dd></div>`).join("")}</dl>
   <div class="row">
     <a class="btn primary" href="/v/${esc(r.publicId)}/document" target="_blank" rel="noopener">View the full document</a>
-    <a class="btn" href="/v/${esc(r.publicId)}/pdf">Download official PDF</a>
+    ${pdfReady ? `<a class="btn" href="/v/${esc(r.publicId)}/pdf">Download official PDF</a>` : `<span class="muted">The official PDF is still being prepared.</span>`}
   </div>
 </section>
 
-<section class="card">
+${pdfReady ? `<section class="card">
   <h2>Check a PDF you received</h2>
   <p class="muted">Pick the PDF file you were sent. It's checked in your browser and isn't uploaded.</p>
   <label class="file-drop"><input type="file" id="pdf-check" accept="application/pdf,.pdf"><span>Choose PDF…</span></label>
   <p id="pdf-result" class="check-result" role="status" data-expected="${esc(r.pdfHash)}"></p>
-</section>
+</section>` : ""}
 
 <details class="card tech">
   <summary>Technical details</summary>
-  <ul class="checks">${checks.map(([k, ok]) => `<li class="${ok ? "ok" : "bad"}"><span>${ok ? "✓" : "✕"}</span>${esc(k)}</li>`).join("")}</ul>
+  <ul class="checks">${checks.map(([k, ok]) => `<li class="${ok === null ? "" : ok ? "ok" : "bad"}"><span>${ok === null ? "…" : ok ? "✓" : "✕"}</span>${esc(k)}</li>`).join("")}</ul>
   <dl class="facts mono">
     <div><dt>Verification code</dt><dd>${esc(r.verificationCode)}</dd></div>
     <div><dt>Signing key ID</dt><dd>${esc(r.issuer.keyId)} (Ed25519)</dd></div>
     <div><dt>Content SHA-256</dt><dd>${esc(r.contentHash)}</dd></div>
-    <div><dt>PDF SHA-256</dt><dd>${esc(r.pdfHash)}</dd></div>
+    <div><dt>PDF SHA-256</dt><dd>${esc(r.pdfHash) || "—"}</dd></div>
   </dl>
   <p class="muted">Signed data: <a href="/api/public/verify/${esc(r.publicId)}">JSON</a> · Issuer public key: <a href="/api/public/orgs/${esc(r.issuer.slug)}/key">${esc(r.issuer.slug)}</a></p>
 </details>`,
@@ -158,7 +209,7 @@ router.get("/v/:code/document", verifyLimiter, async (req, res) => {
   const org = await repo("Organization").findOne({ where: { id: doc.organizationId } })
   const version = await repo("TemplateVersion").findOne({ where: { id: doc.templateVersionId } })
   const stamp = doc.status === "issued" ? null : documents.STAMPS[doc.status]
-  const out = await documents.renderIssued(req, doc, org, version, { stamp })
+  const out = await documents.renderIssued(requestContext(req), doc, org, version, { stamp })
   if (out.kind === "pdf") return renderCache.sendPdf(res, out.body, `${doc.documentNo}.pdf`)
   let html = out.body
   if (doc.status !== "issued") {
@@ -171,7 +222,8 @@ router.get("/v/:code/document", verifyLimiter, async (req, res) => {
 
 router.get("/v/:code/pdf", verifyLimiter, async (req, res) => {
   const doc = await documents.findForVerification(req.params.code)
-  if (!doc || !doc.pdfPath) return notFoundPage(res)
+  if (!doc) return notFoundPage(res)
+  if (!documents.pdfReady(doc)) return pdfNotReadyPage(res, doc)
   const pdf = await storage.readFile(doc.pdfPath)
   res.setHeader("Content-Type", "application/pdf")
   res.setHeader("Content-Disposition", `inline; filename="${doc.documentNo.replace(/[^A-Za-z0-9._-]+/g, "_")}.pdf"`)
@@ -203,6 +255,7 @@ router.get("/api/public/verify/:code", verifyLimiter, async (req, res) => {
     checks: r.checks,
     contentHash: r.contentHash,
     pdfHash: r.pdfHash,
+    pdfStatus: r.pdfStatus,
     signature: r.signature,
     signatureAlgorithm: "Ed25519 over canonical JSON (sorted keys) of signedPayload",
     signedPayload: r.signedPayload,
@@ -212,20 +265,28 @@ router.get("/api/public/verify/:code", verifyLimiter, async (req, res) => {
 router.get("/api/public/orgs/:slug/key", verifyLimiter, async (req, res) => {
   const org = await repo("Organization").findOne({ where: { slug: String(req.params.slug) } })
   if (!org) return res.status(404).json({ message: "Not found" })
-  res.json({ organization: org.name, slug: org.slug, keyId: org.keyId, algorithm: "Ed25519", publicKey: org.publicKey })
+  res.json({
+    organization: org.name,
+    slug: org.slug,
+    verificationStatus: org.verificationStatus,
+    verified: verifiedIdentity(org),
+    keyId: org.keyId,
+    algorithm: "Ed25519",
+    publicKey: org.publicKey,
+  })
 })
 
 router.get("/api/public/config", (req, res) => {
   res.json({
     appName: APP_NAME(),
-    allowSignup: String(process.env.ALLOW_SIGNUP || "true").toLowerCase() !== "false",
+    allowSignup: config.allowSignup,
   })
 })
 
 // ---- Sandboxed previews for the dashboard -------------------------------------------
 
-router.get("/render/:token", (req, res) => {
-  const out = renderCache.get(req.params.token)
+router.get("/render/:token", async (req, res) => {
+  const out = await renderCache.get(req.params.token)
   if (!out) return res.status(404).send("Preview expired — reload it from the dashboard.")
   renderCache.send(res, out)
 })
@@ -235,7 +296,7 @@ router.get("/render/:token", (req, res) => {
 // those links redirect to the verify page of the imported document.
 
 router.get("/report/*path", verifyLimiter, async (req, res) => {
-  const slug = process.env.LEGACY_ORG_SLUG
+  const slug = config.legacyOrgSlug
   const segments = [].concat(req.params.path || [])
   if (segments[segments.length - 1] === "generate") segments.pop()
   const documentNo = segments.join("/").trim().toUpperCase()

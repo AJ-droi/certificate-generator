@@ -4,6 +4,8 @@ const { checkTemplateSyntax } = require("../lib/render")
 const { inspectSourcePdf, validateLayout } = require("../lib/pdf-overlay")
 const storage = require("./storage.service")
 const { canonicalJson, sha256 } = require("../lib/crypto")
+const { audit } = require("../lib/audit")
+const { cleanName } = require("./org.service")
 const { badRequest, notFound } = require("../lib/errors")
 
 const MAX_HTML = 1_000_000
@@ -83,14 +85,20 @@ async function prepareVersion({ kind = "html", html, schema, settings, sourceHas
 }
 
 // Stores an uploaded PDF (by fingerprint) and reports its pages and fillable fields.
-async function uploadSource(user, buffer) {
+async function uploadSource(ctx, buffer) {
   const info = await inspectSourcePdf(buffer)
   const hash = sha256(buffer)
-  await storage.saveTemplateSource(user.organizationId, hash, buffer)
+  await storage.saveTemplateSource(ctx.user.organizationId, hash, buffer)
+  await audit(ctx, "template.pdf_uploaded", {
+    entityType: "template_source",
+    entityId: hash,
+    details: { pages: info.pageCount, bytes: buffer.length, formFields: info.formFields.length },
+  })
   return { sourceHash: hash, ...info }
 }
 
-async function createTemplate(user, { name, description, ...input }) {
+async function createTemplate(ctx, { name, description, ...input }) {
+  const user = ctx.user
   const title = String(name || "").trim()
   if (!title) throw badRequest("Template name is required")
   const version = await prepareVersion(input, user.organizationId)
@@ -109,11 +117,13 @@ async function createTemplate(user, { name, description, ...input }) {
     })
     template.currentVersionId = v.id
     await m.getRepository("Template").save(template)
+    await audit(ctx, "template.created", { entityType: "template", entityId: template.id, details: { name: template.name, kind: v.kind } }, m)
     return { template, version: v }
   })
 }
 
-async function addVersion(user, templateId, input) {
+async function addVersion(ctx, templateId, input) {
+  const user = ctx.user
   const prepared = await prepareVersion(input, user.organizationId)
   return AppDataSource.transaction(async (m) => {
     const template = await m
@@ -141,8 +151,51 @@ async function addVersion(user, templateId, input) {
     })
     template.currentVersionId = v.id
     await m.getRepository("Template").save(template)
+    await audit(ctx, "template.version_created", { entityType: "template", entityId: template.id, details: { version: v.version } }, m)
     return { template, version: v }
   })
+}
+
+async function listTemplates(orgId) {
+  const list = await repo("Template").find({ where: { organizationId: orgId }, order: { name: "ASC" } })
+  const ids = list.map((t) => t.currentVersionId).filter(Boolean)
+  const versions = ids.length
+    ? await repo("TemplateVersion")
+        .createQueryBuilder("v")
+        .select(["v.id", "v.version", "v.kind", "v.schema", "v.settings", "v.createdAt"])
+        .where("v.id IN (:...ids)", { ids })
+        .getMany()
+    : []
+  const byId = new Map(versions.map((v) => [v.id, v]))
+  return list.map((t) => ({ ...t, currentVersion: byId.get(t.currentVersionId) || null }))
+}
+
+async function templateDetail(orgId, id) {
+  const template = await getTemplate(orgId, id)
+  const version = await getVersion(orgId, template.currentVersionId)
+  const history = await repo("TemplateVersion").find({
+    where: { templateId: template.id },
+    select: ["id", "version", "contentHash", "createdAt", "createdBy"],
+    order: { version: "DESC" },
+  })
+  return { template, version, history }
+}
+
+async function templateVersion(orgId, templateId, versionId) {
+  const v = await getVersion(orgId, versionId)
+  if (v.templateId !== templateId) throw notFound("Template version not found")
+  return v
+}
+
+// Name, description, archived. (The layout changes through addVersion.)
+async function updateTemplate(ctx, id, { name, description, archived } = {}) {
+  const template = await getTemplate(ctx.user.organizationId, id)
+  if (name !== undefined) template.name = cleanName(name, "Template name")
+  if (description !== undefined) template.description = String(description || "").slice(0, 2000)
+  if (archived !== undefined) template.archived = Boolean(archived)
+  await repo("Template").save(template)
+  await audit(ctx, "template.updated", { entityType: "template", entityId: template.id, details: { archived: template.archived } })
+  return template
 }
 
 async function getTemplate(orgId, id) {
@@ -177,4 +230,16 @@ async function nextDocumentNo(manager, template, version) {
   throw new Error("Couldn't find a free document number")
 }
 
-module.exports = { createTemplate, addVersion, getTemplate, getVersion, nextDocumentNo, prepareVersion, uploadSource }
+module.exports = {
+  createTemplate,
+  addVersion,
+  getTemplate,
+  getVersion,
+  listTemplates,
+  templateDetail,
+  templateVersion,
+  updateTemplate,
+  nextDocumentNo,
+  prepareVersion,
+  uploadSource,
+}

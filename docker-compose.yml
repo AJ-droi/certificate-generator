@@ -1,6 +1,8 @@
-# Local database for development and tests.
-#   npm run db:up     start Postgres in the background
-#   npm run db:down   stop it (data is kept in the "pgdata" volume)
+# Local services for development and tests.
+#   npm run db:up      start Postgres in the background
+#   npm run db:down    stop everything (data is kept in the "pgdata" volume)
+#   npm run redis:up   start Redis too (optional; set REDIS_URL=redis://127.0.0.1:6380)
+#   npm run s3:up      start SeaweedFS, an S3-compatible store (optional; see test/e2e/storage-s3.test.js)
 services:
   db:
     image: postgres:16-alpine
@@ -22,5 +24,37 @@ services:
       timeout: 3s
       retries: 20
 
+  # Optional: shared rate limits and previews, as when running several servers.
+  redis:
+    image: redis:7-alpine
+    container_name: certificate-generator-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # Optional: S3-compatible file storage (SeaweedFS), to try STORAGE_DRIVER=s3 locally.
+  # Requests must be signed with the keys in docker/seaweedfs-s3.json.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    container_name: certificate-generator-s3
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+    ports:
+      - "8333:8333"
+    volumes:
+      - s3data:/data
+      - ./docker/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   pgdata:
+  s3data:
