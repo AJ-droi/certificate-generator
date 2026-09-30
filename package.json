@@ -1,25 +1,48 @@
 {
-  "name": "certificate-generator",
+  "name": "doctrust",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Multi-company platform for issuing tamper-evident, QR-verifiable documents",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node tools/dev.js",
+    "build": "npm run build -w @doctrust/web",
+    "start": "npm run start -w @doctrust/api",
+    "worker": "npm run worker -w @doctrust/api",
+    "lint": "eslint .",
+    "typecheck": "npm run typecheck -w @doctrust/web",
+    "test": "npm run test -w @doctrust/api",
+    "test:unit": "npm run test:unit -w @doctrust/api",
+    "test:e2e": "npm run test:e2e -w @doctrust/api",
+    "test:ui": "node --env-file-if-exists=.env node_modules/.bin/playwright test",
+    "seed:demo": "npm run seed:demo -w @doctrust/api",
+    "import:legacy": "npm run import:legacy -w @doctrust/api --",
+    "org": "npm run org -w @doctrust/api --",
+    "staff": "npm run staff -w @doctrust/api --",
+    "db:migrate": "npm run db:migrate -w @doctrust/api",
+    "db:status": "npm run db:status -w @doctrust/api",
+    "db:revert": "npm run db:revert -w @doctrust/api",
+    "db:check": "npm run db:check -w @doctrust/api",
+    "db:migration:generate": "npm run db:migration:generate -w @doctrust/api --",
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d --wait db",
+    "redis:up": "docker compose up -d --wait redis",
+    "s3:up": "docker compose up -d --wait s3",
+    "storage": "npm run storage -w @doctrust/api --"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "express": "^5.2.1",
-    "handlebars": "^4.7.8",
-    "pg": "^8.13.1",
-    "puppeteer": "^24.38.0",
-    "qrcode": "^1.5.4",
-    "reflect-metadata": "^0.2.2",
-    "typeorm": "^0.3.24"
+  "engines": {
+    "node": ">=22.9"
   },
   "devDependencies": {
-    "tailwindcss": "^4.2.1"
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "typescript-eslint": "^8.71.0"
   }
 }

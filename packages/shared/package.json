@@ -1,0 +1,11 @@
+{
+  "name": "@doctrust/shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared styles (verify pages and dashboards) and API types",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles/site.css": "./styles/site.css",
+    "./package.json": "./package.json"
+  }
+}

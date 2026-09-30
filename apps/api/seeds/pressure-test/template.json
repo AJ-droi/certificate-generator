@@ -1,0 +1,89 @@
+{
+  "name": "Pressure Test Certificate",
+  "description": "Uploaded PDF form (QA/QC PT-01) with fields placed on it. Twelve items per page; extra items continue on a copy of the page.",
+  "schema": [
+    { "key": "testDate", "label": "Date of test", "type": "date", "required": true, "showOnVerify": true },
+    { "key": "client", "label": "Client", "type": "text", "required": true, "showOnVerify": true },
+    { "key": "projectLocation", "label": "Project / location", "type": "text", "required": true, "showOnVerify": true },
+    { "key": "testStandard", "label": "Test standard", "type": "text", "showOnVerify": true },
+    { "key": "testMedium", "label": "Test medium", "type": "select", "options": ["Water", "Air", "Nitrogen", "Oil"], "required": true },
+    { "key": "testPressure", "label": "Test pressure (bar)", "type": "number", "required": true, "showOnVerify": true },
+    { "key": "holdingTime", "label": "Holding time (min)", "type": "number", "required": true },
+    { "key": "ambientTemp", "label": "Ambient temp (°C)", "type": "number" },
+    { "key": "gaugeSerial", "label": "Gauge serial no.", "type": "text", "required": true },
+    { "key": "gaugeCalDue", "label": "Gauge calibration due", "type": "date", "required": true },
+    { "key": "items", "label": "Items tested", "type": "table", "required": true, "columns": [
+      { "key": "tag", "label": "Tag / ID no.", "type": "text", "required": true },
+      { "key": "description", "label": "Description", "type": "text", "required": true },
+      { "key": "size", "label": "Size", "type": "text" },
+      { "key": "rating", "label": "Rating", "type": "text" },
+      { "key": "result", "label": "Result", "type": "select", "options": ["PASS", "FAIL"], "required": true },
+      { "key": "remarks", "label": "Remarks", "type": "text" }
+    ] },
+    { "key": "resultAccepted", "label": "Overall result: accepted", "type": "checkbox" },
+    { "key": "resultRejected", "label": "Overall result: rejected", "type": "checkbox" },
+    { "key": "comments", "label": "Comments", "type": "textarea" }
+  ],
+  "layout": {
+    "items": [
+      { "kind": "system", "key": "org.logo", "page": 0, "x": 41, "y": 41, "w": 48, "h": 48 },
+      { "kind": "system", "key": "qr", "page": 0, "x": 496, "y": 39, "w": 56, "h": 56 },
+      { "kind": "system", "key": "document.no", "page": 0, "x": 30, "y": 125, "w": 160, "h": 13 },
+      { "kind": "field", "key": "testDate", "page": 0, "x": 215, "y": 125, "w": 140, "h": 13 },
+      { "kind": "field", "key": "client", "page": 0, "x": 380, "y": 125, "w": 185, "h": 13 },
+      { "kind": "field", "key": "projectLocation", "page": 0, "x": 30, "y": 165, "w": 330, "h": 13 },
+      { "kind": "field", "key": "testStandard", "page": 0, "x": 380, "y": 165, "w": 185, "h": 13 },
+      { "kind": "field", "key": "testMedium", "page": 0, "x": 38, "y": 236, "w": 150, "h": 12 },
+      { "kind": "field", "key": "testPressure", "page": 0, "x": 220, "y": 236, "w": 150, "h": 12 },
+      { "kind": "field", "key": "holdingTime", "page": 0, "x": 400, "y": 236, "w": 150, "h": 12 },
+      { "kind": "field", "key": "ambientTemp", "page": 0, "x": 38, "y": 268, "w": 150, "h": 12 },
+      { "kind": "field", "key": "gaugeSerial", "page": 0, "x": 220, "y": 268, "w": 150, "h": 12 },
+      { "kind": "field", "key": "gaugeCalDue", "page": 0, "x": 400, "y": 268, "w": 150, "h": 12 },
+      { "kind": "column", "table": "items", "column": "#", "page": 0, "x": 30, "y": 339, "w": 30, "h": 18, "align": "center" },
+      { "kind": "column", "table": "items", "column": "tag", "page": 0, "x": 60, "y": 339, "w": 90, "h": 18 },
+      { "kind": "column", "table": "items", "column": "description", "page": 0, "x": 150, "y": 339, "w": 190, "h": 18 },
+      { "kind": "column", "table": "items", "column": "size", "page": 0, "x": 340, "y": 339, "w": 55, "h": 18 },
+      { "kind": "column", "table": "items", "column": "rating", "page": 0, "x": 395, "y": 339, "w": 60, "h": 18 },
+      { "kind": "column", "table": "items", "column": "result", "page": 0, "x": 455, "y": 339, "w": 55, "h": 18, "align": "center" },
+      { "kind": "column", "table": "items", "column": "remarks", "page": 0, "x": 510, "y": 339, "w": 55, "h": 18 },
+      { "kind": "field", "key": "resultAccepted", "page": 0, "x": 30, "y": 585, "w": 12, "h": 12 },
+      { "kind": "field", "key": "resultRejected", "page": 0, "x": 130, "y": 585, "w": 12, "h": 12 },
+      { "kind": "field", "key": "comments", "page": 0, "x": 242, "y": 583, "w": 321, "h": 36 },
+      { "kind": "system", "key": "preparedBy.name", "page": 0, "x": 80, "y": 661, "w": 205, "h": 12 },
+      { "kind": "system", "key": "preparedBy.qualification", "page": 0, "x": 100, "y": 681, "w": 185, "h": 12 },
+      { "kind": "system", "key": "preparedBy.signature", "page": 0, "x": 92, "y": 700, "w": 116, "h": 28 },
+      { "kind": "system", "key": "preparedBy.date", "page": 0, "x": 218, "y": 715, "w": 67, "h": 13 },
+      { "kind": "system", "key": "approvedBy.name", "page": 0, "x": 350, "y": 661, "w": 205, "h": 12 },
+      { "kind": "system", "key": "approvedBy.qualification", "page": 0, "x": 370, "y": 681, "w": 185, "h": 12 },
+      { "kind": "system", "key": "approvedBy.signature", "page": 0, "x": 362, "y": 700, "w": 116, "h": 28 },
+      { "kind": "system", "key": "approvedBy.date", "page": 0, "x": 488, "y": 715, "w": 67, "h": 13 },
+      { "kind": "system", "key": "document.verificationCode", "page": 0, "x": 395, "y": 822, "w": 170, "h": 10, "align": "right", "fontSize": 7 }
+    ],
+    "tables": { "items": { "rowHeight": 18, "rowsPerPage": 12 } }
+  },
+  "settings": {
+    "numberPrefix": "PT/",
+    "numberPadding": 4,
+    "sampleData": {
+      "testDate": "2026-09-21",
+      "client": "ACME ENERGY LTD",
+      "projectLocation": "Flowline tie-in, Trans-Amadi Industrial Layout, Port Harcourt",
+      "testStandard": "ASME B31.3",
+      "testMedium": "Water",
+      "testPressure": 150,
+      "holdingTime": 30,
+      "ambientTemp": 29,
+      "gaugeSerial": "PG-23-0412",
+      "gaugeCalDue": "2027-03-01",
+      "items": [
+        { "tag": "FL-101", "description": "6\" flowline spool, carbon steel", "size": "6\"", "rating": "600#", "result": "PASS", "remarks": "" },
+        { "tag": "FL-102", "description": "6\" flowline spool, carbon steel", "size": "6\"", "rating": "600#", "result": "PASS", "remarks": "" },
+        { "tag": "V-201", "description": "Gate valve", "size": "6\"", "rating": "600#", "result": "PASS", "remarks": "No leaks" },
+        { "tag": "V-202", "description": "Check valve", "size": "6\"", "rating": "600#", "result": "PASS", "remarks": "" }
+      ],
+      "resultAccepted": true,
+      "resultRejected": false,
+      "comments": "Pressure held for 30 minutes with no drop. All joints inspected, no leaks observed."
+    }
+  }
+}

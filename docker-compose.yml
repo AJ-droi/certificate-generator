@@ -1,0 +1,61 @@
+# Local services for the automated tests only — the app itself uses the database
+# and bucket in .env (Neon). The tests wipe their databases, so they never use yours.
+#   npm run db:up      Postgres with the test databases (certificate_generator_test, …_ui_test)
+#   npm run db:down    stop everything
+#   npm run redis:up   Redis, to run the tests with REDIS_URL=redis://127.0.0.1:6380 (optional)
+#   npm run s3:up      SeaweedFS, for the S3 storage tests (optional; see apps/api/test/e2e/storage-s3.test.js)
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: certificate-generator-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: certificate_generator_test
+    ports:
+      # Host port 5433 so it doesn't clash with a Postgres already running on 5432.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # Optional: shared rate limits and previews, as when running several servers.
+  redis:
+    image: redis:7-alpine
+    container_name: certificate-generator-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # Optional: S3-compatible file storage (SeaweedFS), to try STORAGE_DRIVER=s3 locally.
+  # Requests must be signed with the keys in docker/seaweedfs-s3.json.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    container_name: certificate-generator-s3
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+    ports:
+      - "8333:8333"
+    volumes:
+      - s3data:/data
+      - ./docker/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
+  s3data:
