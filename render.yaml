@@ -1,0 +1,57 @@
+# Render Blueprint: one web service (API, dashboards, verify pages and PDF worker).
+# In Render: New > Blueprint, pick this repo. Values marked `sync: false` are asked
+# for when the Blueprint is first created — paste them from your .env.
+services:
+  - type: web
+    name: doctrust
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Same region as the Neon database and bucket (us-east-2).
+    region: ohio
+    # Free instances sleep when idle, so a QR scan could wait a minute. Chrome needs
+    # memory: if PDFs fail with "out of memory", move to the standard plan.
+    plan: starter
+    healthCheckPath: /readyz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MIGRATE_ON_START
+        value: "true"
+      # Render's load balancer sits in front, so read the visitor's IP from it
+      # (rate limits and the activity log use it).
+      - key: TRUST_PROXY
+        value: "1"
+      # Keep Chrome's memory use down on a small instance.
+      - key: RENDER_CONCURRENCY
+        value: "1"
+      - key: WORKER_CONCURRENCY
+        value: "1"
+
+      # Must be the SAME value as today: it encrypts every company's signing key.
+      - key: APP_SECRET
+        sync: false
+      # The https:// address partners scan; printed in every QR code.
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_NAME
+        value: DocTrust
+      - key: ALLOW_SIGNUP
+        value: "true"
+
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_BUCKET
+        value: docutrust
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: AWS_REGION
+        value: us-east-2
+      - key: AWS_ENDPOINT_URL_S3
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false

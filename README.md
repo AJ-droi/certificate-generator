@@ -251,6 +251,10 @@ For **more than one web server** you need shared state: `STORAGE_DRIVER=s3` (any
 
 **Logs and errors:** one JSON line per request with a request ID (also returned as the `X-Request-Id` header, and shown to users on unexpected errors so they can quote it). Set `SENTRY_DSN` to report unexpected errors and failed jobs to Sentry. Failed PDF jobs are retried with growing delays (5 attempts); after the last one the document shows "PDF failed" and approvers can retry it.
 
+**Docker:** the `Dockerfile` builds one image with everything, including Chrome for the PDFs: `docker build -t doctrust .` then `docker run -p 3100:3100 --env-file .env doctrust`.
+
+**Render:** `render.yaml` sets up a web service from that image in Ohio, the same region as the Neon database and bucket. In Render choose **New → Blueprint**, pick the repo, and paste the values it asks for from your `.env`. `APP_SECRET` must be the same value you use today, because it decrypts the companies' signing keys. Then add your domain in the service's settings and set `PUBLIC_BASE_URL` to it. Render sets `PORT`, runs migrations at start (`MIGRATE_ON_START`), and routes traffic only once `/readyz` passes.
+
 **Shutdown:** on SIGTERM the server stops taking requests, lets running jobs finish, then exits (within 25 seconds), so rolling deploys don't lose work. A job interrupted by a crash is picked up again after 10 minutes.
 
 ## Before going live
