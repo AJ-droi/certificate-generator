@@ -62,12 +62,13 @@ const config = {
     return {
       driver: str("STORAGE_DRIVER", "local"),
       dir: str("STORAGE_DIR", "./storage"),
+      // S3_* settings, or the standard AWS_* names providers hand out (e.g. Neon).
       s3: {
         bucket: str("S3_BUCKET", ""),
-        region: str("S3_REGION", "us-east-1"),
-        endpoint: str("S3_ENDPOINT", ""),
-        accessKeyId: str("S3_ACCESS_KEY_ID", ""),
-        secretAccessKey: str("S3_SECRET_ACCESS_KEY", ""),
+        region: str("S3_REGION", str("AWS_REGION", "us-east-1")),
+        endpoint: str("S3_ENDPOINT", str("AWS_ENDPOINT_URL_S3", "")),
+        accessKeyId: str("S3_ACCESS_KEY_ID", str("AWS_ACCESS_KEY_ID", "")),
+        secretAccessKey: str("S3_SECRET_ACCESS_KEY", str("AWS_SECRET_ACCESS_KEY", "")),
         forcePathStyle: bool("S3_FORCE_PATH_STYLE", false),
         prefix: str("S3_PREFIX", "").replace(/^\/+|\/+$/g, ""),
       },

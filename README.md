@@ -188,7 +188,7 @@ The end-to-end tests **wipe their database**, so they refuse to run unless its n
 | `pdf-templates` | PDF form uploads, layout checks, printing onto pages, overflow pages, flattening, swapped forms |
 | `security` | isolation between companies, templates that try to read files or internal services, sandboxed previews |
 | `jobs`, `health` | the job queue (no double runs, retries, final failure), `/healthz`, `/readyz`, request IDs |
-| `storage-s3` | the S3 driver against a real S3-compatible server (SeaweedFS), signed requests, PDFs and forms stored in the bucket, a replaced object detected. Runs when `S3_TEST_ENDPOINT` is set: `npm run s3:up`, then `S3_TEST_ENDPOINT=http://127.0.0.1:8333 npm run test:e2e` |
+| `storage-s3` | the S3 driver against a real S3-compatible server (SeaweedFS), signed requests, PDFs and forms stored in the bucket, a replaced object detected. Runs when `S3_TEST_ENDPOINT` is set: `npm run s3:up`, then `S3_TEST_ENDPOINT=http://127.0.0.1:8333 npm run test:e2e`. Against a hosted store with an existing bucket (e.g. Neon), also set `S3_TEST_BUCKET`; the run uses a throwaway prefix and deletes what it wrote |
 
 Shared set-up is in `test/helpers.js` (`createCompany`, `issueDocument`, `settle()` to run queued jobs, a fake DNS for domain checks).
 
