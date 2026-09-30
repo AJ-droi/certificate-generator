@@ -114,5 +114,7 @@ test("the staff dashboard can be limited to certain IP addresses", async () => {
   } finally {
     delete process.env.PLATFORM_ALLOWED_IPS
   }
-  assert.equal((await anon("GET", "/platform")).status, 200)
+  // Reachable again (the page itself may be 503 when the dashboards aren't built, as in CI's API job).
+  assert.notEqual((await anon("GET", "/platform")).status, 404)
+  assert.notEqual((await anon("POST", "/api/platform/auth/login", {})).status, 404)
 })
