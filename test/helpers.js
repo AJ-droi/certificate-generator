@@ -35,7 +35,7 @@ orgs.dnsLookup.resolveTxt = async (name) => {
 let server
 let base = ""
 
-async function startApp() {
+async function startApp({ port = 0 } = {}) {
   const target = process.env.DATABASE_URL || process.env.PGDATABASE || ""
   if (!/test/i.test(target)) {
     throw new Error("Refusing to run: tests wipe the database. Point PGDATABASE (or DATABASE_URL) at a database with 'test' in its name.")
@@ -45,7 +45,7 @@ async function startApp() {
   await connectRedis()
   const redis = getRedis()
   if (redis) await redis.flushDb()
-  server = createApp().listen(0)
+  server = createApp().listen(port, "127.0.0.1")
   await new Promise((resolve) => server.once("listening", resolve))
   base = `http://127.0.0.1:${server.address().port}`
 }

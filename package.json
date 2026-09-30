@@ -24,7 +24,8 @@
     "lint": "eslint .",
     "redis:up": "docker compose up -d --wait redis",
     "db:check": "node --env-file-if-exists=.env scripts/db.js check",
-    "s3:up": "docker compose up -d --wait s3"
+    "s3:up": "docker compose up -d --wait s3",
+    "test:ui": "PGDATABASE_UI_TEST=${PGDATABASE_UI_TEST:-certificate_generator_ui_test} node --env-file-if-exists=.env node_modules/.bin/playwright test"
   },
   "keywords": [],
   "author": "",
@@ -56,6 +57,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "eslint": "^10.11.0",
     "globals": "^17.12.0"
   }
