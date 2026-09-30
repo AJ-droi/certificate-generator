@@ -5,6 +5,7 @@ storage/
 public/generated/
 
 # Customer data must never be committed (removed from history in Sept 2026).
-src/data/
+apps/api/src/data/
 playwright-report/
 test-results/
+dist/

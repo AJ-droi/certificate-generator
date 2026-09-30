@@ -5,10 +5,10 @@ const PORT = Number(process.env.UI_TEST_PORT || 3199)
 module.exports = async () => {
   process.env.PGDATABASE = process.env.PGDATABASE_UI_TEST || "certificate_generator_ui_test"
   delete process.env.DATABASE_URL
-  const h = require("../test/helpers")
-  const { Worker } = require("../src/services/jobs.service")
-  const platform = require("../src/services/platform.service")
-  const totp = require("../src/lib/totp")
+  const h = require("../apps/api/test/helpers")
+  const { Worker } = require("../apps/api/src/services/jobs.service")
+  const platform = require("../apps/api/src/services/platform.service")
+  const totp = require("../apps/api/src/lib/totp")
 
   await h.startApp({ port: PORT })
   const worker = new Worker({ pollMs: 200 })

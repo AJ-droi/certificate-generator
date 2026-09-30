@@ -1,0 +1,50 @@
+{
+  "name": "@doctrust/api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API, verify pages, background worker and server tools",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env server.js",
+    "dev": "node --env-file-if-exists=../../.env --watch server.js",
+    "worker": "node --env-file-if-exists=../../.env worker.js",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "NODE_ENV=test node --test \"test/unit/*.test.js\"",
+    "test:e2e": "PGDATABASE=${PGDATABASE_TEST:-certificate_generator_test} node --env-file-if-exists=../../.env --test --test-concurrency=1 --test-timeout=120000 \"test/e2e/*.test.js\"",
+    "seed:demo": "node --env-file-if-exists=../../.env scripts/seed-demo.js",
+    "import:legacy": "node --env-file-if-exists=../../.env scripts/import-legacy.js",
+    "org": "node --env-file-if-exists=../../.env scripts/org-verification.js",
+    "staff": "node --env-file-if-exists=../../.env scripts/platform-staff.js",
+    "db:migrate": "node --env-file-if-exists=../../.env scripts/db.js migrate",
+    "db:status": "node --env-file-if-exists=../../.env scripts/db.js status",
+    "db:revert": "node --env-file-if-exists=../../.env scripts/db.js revert",
+    "db:check": "node --env-file-if-exists=../../.env scripts/db.js check",
+    "db:migration:generate": "node --env-file-if-exists=../../.env scripts/db.js generate"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1143.0",
+    "@doctrust/shared": "*",
+    "@sentry/node": "^11.1.0",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "handlebars": "^4.7.8",
+    "jsonwebtoken": "^9.0.3",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
+    "pg": "^8.13.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "puppeteer": "^24.38.0",
+    "qrcode": "^1.5.4",
+    "rate-limit-redis": "^6.0.1",
+    "redis": "^5.12.1",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.24"
+  },
+  "engines": {
+    "node": ">=22.9"
+  }
+}

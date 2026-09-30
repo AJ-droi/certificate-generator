@@ -36,26 +36,53 @@ Requires Node 22.9+ and Docker (for Postgres), or your own PostgreSQL.
 npm install
 npx puppeteer browsers install chrome   # Chrome for making PDFs (skip if PUPPETEER_EXECUTABLE_PATH is set)
 cp .env.example .env                    # set APP_SECRET (openssl rand -base64 48)
-npm run db:up                           # Postgres in Docker, port 5433 (also creates the test database)
+npm run db:up                           # Postgres in Docker, port 5433 (also creates the test databases)
 npm run db:migrate                      # create the tables
 npm run seed:demo                       # optional: demo company, 3 users, sample certificates
-npm run dev                             # http://localhost:3100, restarts on changes
+npm run dev                             # API + dashboards with hot reload
 ```
 
-- Dashboard: `http://localhost:3100/app`
-- Verify page: `http://localhost:3100/` (enter a code) or scan a QR
-- Staff dashboard: `http://localhost:3100/platform` (create an account with `npm run staff -- create --email you@example.com --name "You"`)
+`npm run dev` starts the API on :3100 and the dashboards' dev server on :5173, which forwards API calls to the API, so everything is one origin as in production:
+
+- Dashboard: `http://localhost:5173/app`
+- Staff dashboard: `http://localhost:5173/platform` (create an account with `npm run staff -- create --email you@example.com --name "You"`)
+- Verify page: `http://localhost:5173/` (enter a code) or scan a QR
 - Demo logins (password `demo-password-123`): `admin@demo.test`, `inspector@demo.test` (issuer), `approver@demo.test`
 
-Logs are JSON; for readable output locally run `npm run dev | npx pino-pretty`.
+Production-style locally: `npm run build && npm start`, then everything is on `http://localhost:3100`.
+
+Logs are JSON; for readable output run `npm run dev -w @doctrust/api | npx pino-pretty`.
+
+## Repository layout
+
+npm workspaces:
+
+| Folder | What |
+|---|---|
+| `apps/api` | The server (Express, JavaScript): JSON API, verify pages, background worker, migrations, server-only tools, API tests |
+| `apps/web` | The dashboards (React + TypeScript + Vite): company dashboard at `/app`, staff dashboard at `/platform` |
+| `packages/shared` | The stylesheet (used by the verify pages and the dashboards) and TypeScript types of the API's responses |
+| `e2e-ui` | Browser tests of both dashboards (Playwright) |
+| `tools/dev.js` | `npm run dev` |
+
+The API serves the built dashboards (`apps/web/dist`): pages at `/app/…` and `/platform/…`, files under `/web/assets/` (cached for a year; names change with every build). The public verify page stays server-rendered HTML — fast, no JavaScript needed, few moving parts.
+
+### The dashboards (apps/web)
+
+- **Screens** are React components in `apps/web/src/app/pages` and `apps/web/src/platform/pages`; routes are in each `App.tsx` (React Router).
+- **Data** comes through React Query (`useQuery`), so screens show cached data instantly and refresh after changes (`invalidateQueries`). A document waiting for its PDF re-checks every few seconds.
+- **API types** live in `packages/shared/src/index.ts`. When an API response changes, change the type there too — `npm run typecheck` then shows every screen affected.
+- **Template editors** keep their layout in a small store (`apps/web/src/shared/store.ts`): every change goes through `edit(draft => …)`. The PDF editor is split into `model.ts` (rules, no React), `cleanSource.ts` (erasing text from a form) and the components.
+- **Dialogs** can be awaited: `const values = await dialogs.form("Title", <fields/>)` (`apps/web/src/shared/ui/Dialogs.tsx`).
+- Links from before the React version (`/app#/documents/…`) are redirected to their new address.
 
 ### Changing the database
 
-Tables only change through migrations in `src/migrations/`. After editing `src/entities/`:
+Tables only change through migrations in `apps/api/src/migrations/`. After editing `apps/api/src/entities/`:
 
 ```bash
 npm run db:migrate                          # bring your database up to date first
-npm run db:migration:generate -- AddSomething   # writes src/migrations/<time>-AddSomething.js
+npm run db:migration:generate -- AddSomething   # writes apps/api/src/migrations/<time>-AddSomething.js
 # review the file, then:
 npm run db:migrate
 ```
@@ -124,7 +151,7 @@ How it stays secure:
 - Text is printed with the standard Helvetica font. Characters outside Western European (Latin-1) are replaced (e.g. ₦ becomes "N").
 - Page rotation and crop boxes are handled, so scans saved sideways still line up.
 
-`seeds/pressure-test/` has a sample form (`form.pdf`, regenerate with `node scripts/make-sample-form.js`) and its layout; `npm run seed:demo` creates it as a second demo template.
+`apps/api/seeds/pressure-test/` has a sample form (`form.pdf`, regenerate with `node apps/api/scripts/make-sample-form.js`) and its layout; `npm run seed:demo` creates it as a second demo template.
 
 ## Writing HTML templates
 
@@ -141,7 +168,7 @@ Layouts are HTML + [Handlebars](https://handlebarsjs.com/guide/). Each field key
 
 Helpers: `formatDate`, `check`, `yesno`, `upper`, `default`, `inc`, `add`, `mul`, `length`, `eq`, `ne`, `and`, `or`, `not`.
 
-Use inline CSS. When the PDF is made, the template can only load from the hosts in `RENDER_ALLOWED_HOSTS`; `file://`, `http://`, internal addresses and everything else are blocked. The demo template in `seeds/lifting-inspection/` is the original LOLER report converted to plain CSS (no Tailwind CDN, so rendering never depends on a third-party script).
+Use inline CSS. When the PDF is made, the template can only load from the hosts in `RENDER_ALLOWED_HOSTS`; `file://`, `http://`, internal addresses and everything else are blocked. The demo template in `apps/api/seeds/lifting-inspection/` is the original LOLER report converted to plain CSS (no Tailwind CDN, so rendering never depends on a third-party script).
 
 ## Moving over from the old version
 
@@ -170,14 +197,17 @@ The signature is Ed25519 over the canonical JSON (keys sorted, no whitespace) of
 ## Tests and CI
 
 ```bash
-npm run lint        # ESLint: real mistakes only (undefined names, unused code), not style
+npm run lint        # ESLint: real mistakes, React Hooks rules, TypeScript
+npm run typecheck   # TypeScript (the dashboards and the shared API types)
 npm run test:unit   # fast, no database: crypto, TOTP codes, config checks, name/domain rules, schemas
-npm run test:e2e    # end-to-end against real Postgres + headless Chrome (+ Redis if REDIS_URL is set)
-npm test            # both
+npm run test:e2e    # API end-to-end against real Postgres + headless Chrome (+ Redis if REDIS_URL is set)
+npm test            # unit + API end-to-end
+npm run build       # production build of the dashboards
+npm run test:ui     # browser tests of both dashboards (needs npm run build first)
 npm run db:check    # fails if src/entities changed without a migration
 ```
 
-The end-to-end tests **wipe their database**, so they refuse to run unless its name contains "test" (`certificate_generator_test` by default; the Docker Compose Postgres creates it). Each file in `test/e2e/` starts from an empty database and they run one at a time:
+The end-to-end tests **wipe their database**, so they refuse to run unless its name contains "test" (`certificate_generator_test` by default; the Docker Compose Postgres creates it). Each file in `apps/api/test/e2e/` starts from an empty database and they run one at a time:
 
 | File | Covers |
 |---|---|
@@ -190,9 +220,13 @@ The end-to-end tests **wipe their database**, so they refuse to run unless its n
 | `jobs`, `health` | the job queue (no double runs, retries, final failure), `/healthz`, `/readyz`, request IDs |
 | `storage-s3` | the S3 driver against a real S3-compatible server (SeaweedFS), signed requests, PDFs and forms stored in the bucket, a replaced object detected. Runs when `S3_TEST_ENDPOINT` is set: `npm run s3:up`, then `S3_TEST_ENDPOINT=http://127.0.0.1:8333 npm run test:e2e`. Against a hosted store with an existing bucket (e.g. Neon), also set `S3_TEST_BUCKET`; the run uses a throwaway prefix and deletes what it wrote |
 
-Shared set-up is in `test/helpers.js` (`createCompany`, `issueDocument`, `settle()` to run queued jobs, a fake DNS for domain checks).
+Shared set-up is in `apps/api/test/helpers.js` (`createCompany`, `issueDocument`, `settle()` to run queued jobs, a fake DNS for domain checks).
 
-GitHub Actions (`.github/workflows/ci.yml`) runs lint and unit tests, then the migration check and end-to-end tests against Postgres 16, Redis 7, SeaweedFS (S3) and headless Chrome, on every push and pull request.
+**Browser tests** (`e2e-ui/`, Playwright) sign in, sign up and request verification, invite people, take a document from draft to approval, background PDF, partner verification and revocation, build PDF and HTML templates, and use the staff dashboard. They start the API themselves against `certificate_generator_ui_test` and use labels and visible text, not implementation details. Locally, `PW_CHANNEL=chrome npm run test:ui` uses your installed Chrome instead of downloading one (`npx playwright install chromium`).
+
+The tests never use the file storage configured in `.env` (it may be a real bucket): they always use a temporary folder, except the S3 test.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs three jobs on every push and pull request: checks (lint, types, unit tests, build), API tests (Postgres 16, Redis 7, SeaweedFS for S3, headless Chrome), and browser tests against the built app.
 
 To run the whole suite the way CI does:
 
@@ -207,6 +241,7 @@ Processes, all from the same code:
 
 | Process | Command | How many |
 |---|---|---|
+| Build | `npm run build` | once per deploy (the dashboards, served by the web server) |
 | Web server | `npm start` | one or more, behind a load balancer; each also runs a job worker unless `RUN_WORKER=false` |
 | Job worker (optional) | `npm run worker` | to run PDF work on separate machines |
 | Migrations | `npm run db:migrate` | once per deploy, before starting the new version (or `MIGRATE_ON_START=true` on a single server) |
@@ -231,25 +266,23 @@ For **more than one web server** you need shared state: `STORAGE_DRIVER=s3` (any
 - More than one server: `STORAGE_DRIVER=s3` and `REDIS_URL` (see above).
 - Point your load balancer's health check at `/readyz`, and set `SENTRY_DSN`.
 
-## Project layout
+## Inside the API (apps/api)
 
 ```
 server.js / worker.js     web server (runs a job worker too) / standalone job worker
 src/runtime.js            start-up checks and clean shutdown shared by both
 src/config/               all settings (index.js) and the database connection
 src/migrations/           database migrations (npm run db:migrate)
-src/app.js                Express app: security headers, request logging, routes
+src/app.js                Express app: security headers, request logging, routes, the built dashboards
 src/entities/             database tables
 src/lib/                  auth, signing/hashing, TOTP, field schema, template rendering, PDF overlay,
                           logger, error tracking, Redis, rate limits, migrations runner
 src/services/             the rules: companies, people, templates, documents, jobs, storage, PDF, staff
 src/routes/               thin HTTP layer: auth, dashboard API, staff API, public verify pages, health
-public/assets/lib/        browser code shared by both dashboards (DOM helpers, API client, router)
-public/assets/app/        company dashboard, one ES module per area (documents, templates, PDF editor, …)
-public/assets/platform/   staff dashboard modules
+public/                   the verify page's script, icon and images
 seeds/                    demo templates (HTML and PDF form)
 scripts/                  db migrations, demo seed, legacy import, staff and company-verification tools
 test/unit/, test/e2e/     unit and end-to-end tests
 ```
 
-Services never see Express objects: routes pass a small context (`{ user, ip, baseUrl }`, see `src/lib/context.js`), so scripts and the job worker call the same code. The browser code is plain ES modules with no build step; `npm run lint` checks imports between them.
+Services never see Express objects: routes pass a small context (`{ user, ip, baseUrl }`, see `src/lib/context.js`), so scripts and the job worker call the same code.

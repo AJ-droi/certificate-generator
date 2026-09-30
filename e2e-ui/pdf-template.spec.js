@@ -4,7 +4,7 @@ const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { signIn, nav, dialog } = require("./support")
-const { makeSampleForm } = require("../scripts/make-sample-form")
+const { makeSampleForm } = require("../apps/api/scripts/make-sample-form")
 
 let formPath
 test.beforeAll(async () => {

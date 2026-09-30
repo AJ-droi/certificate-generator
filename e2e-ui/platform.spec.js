@@ -1,7 +1,7 @@
 // The staff dashboard: sign in with an authenticator code, review a company, verify it.
 const { test, expect } = require("@playwright/test")
 const { platformUrl, dialog } = require("./support")
-const totp = require("../src/lib/totp")
+const totp = require("../apps/api/src/lib/totp")
 
 test("staff sign in with a code, review the queue and verify a company", async ({ page }) => {
   await page.goto(platformUrl("/login"))
